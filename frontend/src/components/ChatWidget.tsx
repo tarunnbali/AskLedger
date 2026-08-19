@@ -32,7 +32,7 @@ export default function ChatWidget() {
       <div className="flex items-center justify-between p-4 border-b border-white/10 bg-black/40 backdrop-blur-md">
         <div className="flex items-center gap-2">
           <div className="text-lg font-bold">
-             <span className="gradient-text">SQL Agent</span>
+             <span className="gradient-text">AskLedger</span>
           </div>
           <div className={`w-2 h-2 rounded-full ml-2 shadow-[0_0_10px_currentColor] ${sessionToken ? 'bg-green-500 text-green-500' : 'bg-red-500 text-red-500'}`}></div>
           {sessionToken && (

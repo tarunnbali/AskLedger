@@ -2,10 +2,10 @@
 
 ![FastAPI](https://img.shields.io/badge/FastAPI-005571?style=for-the-badge&logo=fastapi)
 ![PostgreSQL](https://img.shields.io/badge/PostgreSQL-316192?style=for-the-badge&logo=postgresql&logoColor=white)
-![OpenRouter](https://img.shields.io/badge/OpenRouter-8E75B2?style=for-the-badge&logo=openai&logoColor=white)
+![Gemini](https://img.shields.io/badge/Google%20Gemini-8E75B2?style=for-the-badge&logo=google&logoColor=white)
 ![Python](https://img.shields.io/badge/Python-3776AB?style=for-the-badge&logo=python&logoColor=white)
 
-An enterprise-ready, FastAPI-based backend that transforms natural language questions into secure PostgreSQL queries using OpenRouter (Claude 3.5 Haiku). Architected specifically for multi-tenant SaaS environments, it enforces strict data isolation and SQL validation, guaranteeing that users can only query their own data.
+An enterprise-ready, FastAPI-based backend that transforms natural language questions into secure PostgreSQL queries using Google Gemini. Architected specifically for multi-tenant SaaS environments, it enforces strict data isolation and SQL validation, guaranteeing that users can only query their own data.
 
 ## 🛠️ Tech Stack
 | Component | Technology | Use Case |
@@ -13,7 +13,7 @@ An enterprise-ready, FastAPI-based backend that transforms natural language ques
 | **Web framework** | **FastAPI** | High-performance API server with native async support and OpenAPI docs. |
 | **Database ORM** | **SQLAlchemy 2.x** | Declarative models for the database and typed relationships. |
 | **Database** | **PostgreSQL** | Primary datastore (requires `psycopg2-binary`). |
-| **LLM for NL‑to‑SQL** | **OpenRouter (Claude 3.5 Haiku)** | LLM orchestrator leveraging `openai (via OpenRouter)`. |
+| **LLM for NL‑to‑SQL** | **Google Gemini** | LLM orchestrator leveraging Gemini's OpenAI-compatible endpoint via the `openai` SDK. |
 | **Configuration** | **pydantic‑settings** | Strongly typed config parsing from `.env` files. |
 | **Server** | **uvicorn** | ASGI web server. |
 
@@ -24,7 +24,7 @@ An enterprise-ready, FastAPI-based backend that transforms natural language ques
 ```mermaid
 flowchart TD
     Client([Client Application]) -->|POST /api/v1/chat| API[FastAPI Chat Endpoint]
-    API -->|1. Generate SQL via Prompt| LLM((OpenRouter API))
+    API -->|1. Generate SQL via Prompt| LLM((Gemini API))
     LLM -->|Returns Raw SQL| Validator[SQL Validator]
     
     Validator -->|2. Check Keywords| Wrapper[Query Wrapper]

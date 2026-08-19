@@ -24,7 +24,7 @@ See [walkthrough.md](walkthrough.md) for a detailed step-by-step trace of a requ
 | Frontend | Next.js, React, Tailwind |
 | Backend | FastAPI, SQLAlchemy |
 | Database | PostgreSQL with Row-Level Security |
-| LLM | OpenRouter (Claude 3.5 Haiku for SQL generation, GPT-OSS for intent/explanations) |
+| LLM | Google Gemini (free tier) via its OpenAI-compatible endpoint |
 | Auth | JWT |
 
 ## Try it yourself (demo accounts)
@@ -53,10 +53,13 @@ cd askledger
 **Backend**
 ```bash
 cd backend
-cp .env.example .env   # fill in DATABASE_URL, OPENROUTER_API_KEY, JWT_SECRET
+cp .env.example .env   # fill in DATABASE_URL, ADMIN_DATABASE_URL, GEMINI_API_KEY, JWT_SECRET
 pip install -r requirements.txt
 python create_tables.py
-psql "$DATABASE_URL" -f rls_setup.sql
+psql "$ADMIN_DATABASE_URL" -f rls_setup.sql
+# If your provider's owner role has BYPASSRLS (e.g. Neon), also run:
+#   python setup_db_role.py
+# and use the DATABASE_URL it prints instead of the owner connection string.
 python seed_data.py
 uvicorn app.main:app --reload
 ```

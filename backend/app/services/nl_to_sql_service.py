@@ -6,8 +6,8 @@ from app.core.config import settings
 from app.prompts.nl_to_sql_prompt import build_prompt
 
 client = OpenAI(
-    base_url="https://openrouter.ai/api/v1",
-    api_key=settings.OPENROUTER_API_KEY,
+    base_url=settings.GEMINI_BASE_URL,
+    api_key=settings.GEMINI_API_KEY,
 )
 
 
@@ -29,7 +29,7 @@ def generate_sql(question: str, history: list = []) -> str:
     """
     prompt = build_prompt(question, history)
     response = client.chat.completions.create(
-        model="anthropic/claude-3.5-haiku",
+        model=settings.GEMINI_MODEL,
         messages=[{"role": "user", "content": prompt}]
     )
     raw = response.choices[0].message.content.strip()
@@ -57,7 +57,7 @@ Only SELECT queries are allowed.
 Do NOT include entity_id in the WHERE clause.
 """
     response = client.chat.completions.create(
-        model="anthropic/claude-3.5-haiku",
+        model=settings.GEMINI_MODEL,
         messages=[{"role": "user", "content": retry_prompt}]
     )
     return clean_sql(response.choices[0].message.content)

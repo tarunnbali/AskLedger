@@ -9,8 +9,8 @@ from openai import OpenAI
 from app.core.config import settings
 
 client = OpenAI(
-    base_url="https://openrouter.ai/api/v1",
-    api_key=settings.OPENROUTER_API_KEY,
+    base_url=settings.GEMINI_BASE_URL,
+    api_key=settings.GEMINI_API_KEY,
 )
 
 
@@ -64,7 +64,7 @@ Return a JSON object ONLY with no markdown:
 """
 
     response = client.chat.completions.create(
-        model="openai/gpt-oss-20b",
+        model=settings.GEMINI_MODEL,
         messages=[{"role": "user", "content": prompt}]
     )
     raw = response.choices[0].message.content.strip().strip("```json").strip("```").strip()
@@ -102,7 +102,7 @@ Be concise (1 sentence max). Do not make assumptions. Do not answer the question
 Your clarifying question:"""
 
     response = client.chat.completions.create(
-        model="openai/gpt-oss-20b",
+        model=settings.GEMINI_MODEL,
         messages=[{"role": "user", "content": prompt}]
     )
     return response.choices[0].message.content.strip()
@@ -132,7 +132,7 @@ User message: "{message}"
 Your response:"""
 
     response = client.chat.completions.create(
-        model="openai/gpt-oss-20b",
+        model=settings.GEMINI_MODEL,
         messages=[{"role": "user", "content": prompt}]
     )
     return response.choices[0].message.content.strip()
@@ -165,14 +165,8 @@ Sample data: {results_preview}
 
 Your summary:"""
     response = client.chat.completions.create(
-        model="openai/gpt-oss-20b",
+        model=settings.GEMINI_MODEL,
         messages=[{"role": "user", "content": prompt}],
-        extra_body={
-            "reasoning": {
-                "effort": "medium",
-                "exclude": True
-            }
-        }
     )
 
     return response.choices[0].message.content.strip()

@@ -17,17 +17,28 @@ Data consistency rules enforced:
   - billing_schedule dates are contiguous (end of period N = start of period N+1)
 """
 
+import os
 import random
 import uuid
 from datetime import date, timedelta
 
-from app.core.database import SessionLocal
+from dotenv import load_dotenv
+from sqlalchemy import create_engine
+from sqlalchemy.orm import sessionmaker
+
 from app.core.security import hash_password
 from app.models.billing_schedule import BillingSchedule
 from app.models.calculations import SubscriptionCalculation
 from app.models.financial_terms import SubscriptionFinancialTerms
 from app.models.subscription import Subscription
 from app.models.user import User
+
+# Seeding needs INSERT privileges the restricted app role doesn't have —
+# use the admin/owner connection, not settings.DATABASE_URL.
+load_dotenv(dotenv_path=".env")
+admin_url = os.environ.get("ADMIN_DATABASE_URL") or os.environ["DATABASE_URL"]
+engine = create_engine(admin_url)
+SessionLocal = sessionmaker(bind=engine)
 
 db = SessionLocal()
 

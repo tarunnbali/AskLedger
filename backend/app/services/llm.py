@@ -14,10 +14,14 @@ from app.core.config import settings
 
 logger = logging.getLogger(__name__)
 
+# No SDK retries: on a 429 the SDK would sleep for Google's suggested retry
+# delay (~40s) before retrying, which stalls the chat. Falling through to the
+# next model immediately is faster. The timeout caps a hung or slow model.
 client = OpenAI(
     base_url=settings.GEMINI_BASE_URL,
     api_key=settings.GEMINI_API_KEY,
-    max_retries=1,
+    max_retries=0,
+    timeout=20.0,
 )
 
 

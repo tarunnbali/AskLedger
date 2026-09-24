@@ -33,7 +33,10 @@ async function fetchWithWakeRetry(url: string, init: RequestInit, onWaking?: () 
       // HTTP error responses resolve normally; only network failures land here.
       // If the backend is already awake, this wasn't a cold start, so don't
       // keep retrying (a retried chat request would spend LLM quota).
-      const awake = await fetch(`${API_BASE_URL}/health`).then((r) => r.ok).catch(() => false);
+      // no-cors: resolves whenever the server answers, even if CORS would
+      // block reading the response, so a CORS misconfiguration isn't
+      // mistaken for a sleeping server. Rejects only when unreachable.
+      const awake = await fetch(`${API_BASE_URL}/health`, { mode: "no-cors" }).then(() => true).catch(() => false);
       if (awake) {
         throw new Error("Something went wrong on the server. Please try again.");
       }

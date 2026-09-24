@@ -30,7 +30,14 @@ interface Message {
   }> | null;
 }
 
-export default function ChatInterface({ token }: { token: string }) {
+interface ChatInterfaceProps {
+  token: string;
+  // A question picked on the landing page, sent automatically once ready
+  initialQuestion?: string | null;
+  onInitialQuestionSent?: () => void;
+}
+
+export default function ChatInterface({ token, initialQuestion, onInitialQuestionSent }: ChatInterfaceProps) {
   const [messages, setMessages] = useState<Message[]>([
     {
       id: "welcome",
@@ -39,7 +46,22 @@ export default function ChatInterface({ token }: { token: string }) {
     },
   ]);
   const [loading, setLoading] = useState(false);
+  const [waking, setWaking] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
+
+  // Send a question picked on the landing page, waiting for any in-flight request
+  const sentInitialRef = useRef<string | null>(null);
+  useEffect(() => {
+    if (!initialQuestion) {
+      sentInitialRef.current = null;
+    } else if (!loading && sentInitialRef.current !== initialQuestion) {
+      // The ref guards against React Strict Mode running this effect twice
+      sentInitialRef.current = initialQuestion;
+      onInitialQuestionSent?.();
+      handleSendMessage(initialQuestion);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [initialQuestion, loading]);
 
   // Auto-scroll to bottom of messages
   useEffect(() => {
@@ -70,7 +92,7 @@ export default function ChatInterface({ token }: { token: string }) {
     setLoading(true);
 
     try {
-      const response = await queryBackend(query, token, history);
+      const response = await queryBackend(query, token, history, () => setWaking(true));
 
       let assistantMessage: Message;
 
@@ -120,11 +142,12 @@ export default function ChatInterface({ token }: { token: string }) {
       setMessages((prev) => [...prev, errorMessage]);
     } finally {
       setLoading(false);
+      setWaking(false);
     }
   };
 
   return (
-    <div className="flex flex-col h-full w-full glass-panel mt-4 mb-4 rounded-2xl overflow-hidden shadow-1xl transition-all duration-300 border border-white/10">
+    <div className="mb-4 mt-4 flex h-full w-full flex-col overflow-hidden rounded-xl border border-rule bg-paper-2/40">
       {/* Messages Window */}
       <div
         ref={scrollRef}
@@ -137,8 +160,8 @@ export default function ChatInterface({ token }: { token: string }) {
         {/* Suggestion chips — only before the first real exchange */}
         {messages.length === 1 && !loading && (
           <div className="pl-4 pr-1 animate-fade-in" style={{ animationDelay: "150ms" }}>
-            <div className="flex items-center gap-1.5 text-[11px] uppercase tracking-wider text-gray-500 mb-2">
-              <Sparkles size={12} className="text-blue-400" />
+            <div className="mb-2 flex items-center gap-1.5 font-mono text-[11px] uppercase tracking-wider text-graphite">
+              <Sparkles size={12} className="text-ledger" />
               <span>Try asking</span>
             </div>
             <div className="flex flex-col items-start gap-2">
@@ -146,7 +169,7 @@ export default function ChatInterface({ token }: { token: string }) {
                 <button
                   key={s}
                   onClick={() => handleSendMessage(s)}
-                  className="text-left text-xs md:text-sm px-3 py-2 rounded-xl glass border border-white/10 text-gray-300 hover:text-white hover:border-blue-500/40 hover:bg-blue-600/10 transition-all"
+                  className="rounded-lg border border-rule bg-surface px-3 py-2 text-left text-xs text-ink transition-colors hover:border-ledger hover:text-ledger md:text-sm"
                 >
                   {s}
                 </button>
@@ -157,18 +180,18 @@ export default function ChatInterface({ token }: { token: string }) {
 
         {loading && (
           <div className="flex justify-start animate-fade-in pl-4">
-            <div className="glass px-4 py-3 rounded-2xl rounded-tl-sm text-gray-400 flex items-center space-x-2">
-              <div className="w-2 h-2 rounded-full bg-blue-500 animate-bounce" style={{ animationDelay: "0ms" }}></div>
-              <div className="w-2 h-2 rounded-full bg-blue-500 animate-bounce" style={{ animationDelay: "150ms" }}></div>
-              <div className="w-2 h-2 rounded-full bg-blue-500 animate-bounce" style={{ animationDelay: "300ms" }}></div>
-              <span className="ml-2 text-sm">Thinking...</span>
+            <div className="flex items-center space-x-2 rounded-2xl rounded-tl-sm border border-rule bg-surface px-4 py-3 text-graphite">
+              <div className="w-2 h-2 rounded-full bg-ledger animate-bounce" style={{ animationDelay: "0ms" }}></div>
+              <div className="w-2 h-2 rounded-full bg-ledger animate-bounce" style={{ animationDelay: "150ms" }}></div>
+              <div className="w-2 h-2 rounded-full bg-ledger animate-bounce" style={{ animationDelay: "300ms" }}></div>
+              <span className="ml-2 text-sm">{waking ? "Waking up the server, this can take a minute..." : "Thinking..."}</span>
             </div>
           </div>
         )}
       </div>
 
       {/* Input Area */}
-      <div className="p-4 sm:p-6 border-t border-white/5 bg-black/20 backdrop-blur-md">
+      <div className="border-t border-rule p-4 sm:p-6">
         <ChatInput onSend={handleSendMessage} disabled={loading} />
       </div>
     </div>

@@ -1,48 +1,67 @@
 @import "tailwindcss";
 
-@theme {
+/* dark: utilities follow the data-theme attribute, not just the OS setting */
+@custom-variant dark (&:where([data-theme="dark"], [data-theme="dark"] *));
+
+/* Palette tokens point at CSS variables so light and dark themes can swap them */
+@theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
 
-  /* Deep dark themes */
-  --color-dark-surface: #121212;
-  --color-dark-panel: rgba(30, 30, 30, 0.6);
-  --color-dark-border: rgba(255, 255, 255, 0.1);
+  --color-paper: var(--paper);
+  --color-paper-2: var(--paper-2);
+  --color-surface: var(--surface);
+  --color-ink: var(--ink);
+  --color-graphite: var(--graphite);
+  --color-rule: var(--rule);
+  --color-ledger: var(--ledger);
+  --color-ledger-soft: var(--ledger-soft);
+  --color-term: var(--term);
 
-  /* Accent colors */
-  --color-primary: #3b82f6;
-  --color-primary-hover: #2563eb;
-  --color-accent: #8b5cf6;
+  --font-sans: var(--font-geist-sans), ui-sans-serif, system-ui, sans-serif;
+  --font-mono: var(--font-geist-mono), ui-monospace, monospace;
 }
 
 @layer base {
+  /* Light: neutral grey paper, ink text, ledger-green accent */
   :root {
-    --background: #121212;
-    --foreground: #ededed;
+    --paper: #ebecee;
+    --paper-2: #e0e2e5;
+    --surface: #ffffff;
+    --ink: #16181d;
+    --graphite: #62666d;
+    --rule: #d2d5da;
+    --ledger: #1f6f4a;
+    --ledger-soft: #e3f0e7;
+    --term: #121412;
+    --rule-line: rgba(22, 24, 29, 0.06);
+    --background: var(--paper);
+    --foreground: var(--ink);
+    color-scheme: light;
+  }
+
+  /* Dark: charcoal paper, off-white ink, a brighter green for contrast */
+  [data-theme="dark"] {
+    --paper: #131417;
+    --paper-2: #1b1d21;
+    --surface: #1d1f24;
+    --ink: #ececee;
+    --graphite: #9a9ea6;
+    --rule: #2b2e34;
+    --ledger: #4caf7d;
+    --ledger-soft: #15291e;
+    --term: #0b0c0b;
+    --rule-line: rgba(255, 255, 255, 0.035);
+    color-scheme: dark;
   }
 }
 
 body {
+  transition: background-color 0.3s ease, color 0.3s ease;
   color: var(--foreground);
   background: var(--background);
-  font-family: Arial, Helvetica, sans-serif;
+  font-family: var(--font-sans);
   overflow-x: hidden;
-}
-
-/* Glassmorphism utilities */
-.glass {
-  background: var(--color-dark-panel);
-  backdrop-filter: blur(12px);
-  -webkit-backdrop-filter: blur(12px);
-  border: 1px solid var(--color-dark-border);
-}
-
-.glass-panel {
-  background: padding-box linear-gradient(145deg, rgba(40,40,40,0.6) 0%, rgba(20,20,20,0.8) 100%);
-  backdrop-filter: blur(16px);
-  -webkit-backdrop-filter: blur(16px);
-  border: 1px solid rgba(255, 255, 255, 0.08);
-  box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.3);
 }
 
 /* Custom scrollbar */
@@ -54,11 +73,11 @@ body {
   background: transparent;
 }
 ::-webkit-scrollbar-thumb {
-  background: rgba(255, 255, 255, 0.1);
+  background: color-mix(in srgb, var(--ink) 18%, transparent);
   border-radius: 4px;
 }
 ::-webkit-scrollbar-thumb:hover {
-  background: rgba(255, 255, 255, 0.2);
+  background: color-mix(in srgb, var(--ink) 32%, transparent);
 }
 
 /* Animations */
@@ -71,24 +90,56 @@ body {
   animation: fadeIn 0.4s ease-out forwards;
 }
 
-.gradient-text {
-  background: linear-gradient(to right, #60a5fa, #c084fc);
-  -webkit-background-clip: text;
-  -webkit-text-fill-color: transparent;
-  background-clip: text;
+/* ── Landing page ─────────────────────────────────────────────────── */
+
+.nav-shell {
+  transition: background-color 0.3s ease, border-color 0.3s ease, backdrop-filter 0.3s ease;
+  border-bottom: 1px solid transparent;
+}
+.nav-shell.is-scrolled {
+  background-color: color-mix(in srgb, var(--paper) 85%, transparent);
+  border-bottom-color: var(--rule);
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
 }
 
-/* Subtle dot-grid backdrop for the landing page */
-.bg-dot-grid {
-  background-image: radial-gradient(rgba(255, 255, 255, 0.08) 1px, transparent 1px);
-  background-size: 28px 28px;
+/* Pipeline steps light up as the scroll line reaches them */
+.pipeline-step .step-node {
+  transition: background-color 0.4s ease, color 0.4s ease, border-color 0.4s ease;
+}
+.pipeline-step.is-active .step-node {
+  background-color: var(--ledger);
+  border-color: var(--ledger);
+  color: var(--paper);
+}
+.pipeline-step .step-copy {
+  transition: opacity 0.4s ease;
+  opacity: 0.45;
+}
+.pipeline-step.is-active .step-copy {
+  opacity: 1;
 }
 
-@keyframes floatSlow {
-  0%, 100% { transform: translate(0, 0); }
-  50% { transform: translate(20px, -20px); }
+.marquee-mask {
+  mask-image: linear-gradient(to right, transparent, black 12%, black 88%, transparent);
+  -webkit-mask-image: linear-gradient(to right, transparent, black 12%, black 88%, transparent);
 }
 
-.animate-float-slow {
-  animation: floatSlow 9s ease-in-out infinite;
+.caret::after {
+  content: "";
+  display: inline-block;
+  width: 2px;
+  height: 1em;
+  margin-left: 2px;
+  vertical-align: -0.15em;
+  background: currentColor;
+  animation: caretBlink 1s steps(1) infinite;
+}
+@keyframes caretBlink {
+  50% { opacity: 0; }
+}
+
+/* Faint horizontal rules, like ledger paper */
+.bg-ledger-rules {
+  background-image: repeating-linear-gradient(to bottom, transparent 0, transparent 35px, var(--rule-line) 35px, var(--rule-line) 36px);
 }

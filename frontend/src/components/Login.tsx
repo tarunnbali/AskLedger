@@ -20,18 +20,20 @@ export default function Login({ onLoginSuccess, autoLogin, onAutoLoginConsumed }
   const [password, setPassword] = useState("password123");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [waking, setWaking] = useState(false);
   const consumedRef = useRef<string | null>(null);
 
   const doLogin = async (u: string, p: string) => {
     setLoading(true);
     setError(null);
     try {
-      const token = await loginBackend(u, p);
+      const token = await loginBackend(u, p, () => setWaking(true));
       onLoginSuccess(token, u);
     } catch (err: any) {
       setError(err.message || "Failed to login");
     } finally {
       setLoading(false);
+      setWaking(false);
     }
   };
 
@@ -52,9 +54,9 @@ export default function Login({ onLoginSuccess, autoLogin, onAutoLoginConsumed }
   };
 
   return (
-    <div className="flex w-full max-w-sm flex-col items-center justify-center p-6 glass-panel rounded-2xl animate-fade-in shadow-2xl transition-all duration-300 mx-auto mt-6">
-      <h2 className="text-2xl font-bold mb-1 tracking-tight text-white/90">AskLedger Login</h2>
-      <p className="text-xs text-gray-500 mb-5 text-center">
+    <div className="mx-auto mt-6 flex w-full max-w-sm flex-col items-center justify-center rounded-xl border border-rule bg-surface p-6 animate-fade-in">
+      <h2 className="text-2xl font-bold mb-1 tracking-tight text-ink">AskLedger Login</h2>
+      <p className="mb-5 text-center text-xs text-graphite">
         This is a portfolio demo — pick a demo tenant below, or sign in manually.
       </p>
 
@@ -69,30 +71,30 @@ export default function Login({ onLoginSuccess, autoLogin, onAutoLoginConsumed }
               setUsername(acc.username);
               doLogin(acc.username, "password123");
             }}
-            className="flex flex-col items-center gap-1 rounded-xl border border-white/10 bg-black/30 hover:bg-blue-600/20 hover:border-blue-500/50 px-2 py-3 transition-all disabled:opacity-50 group"
+            className="group flex flex-col items-center gap-1 rounded-lg border border-rule bg-paper px-2 py-3 transition-colors hover:border-ledger hover:bg-ledger-soft disabled:opacity-50"
           >
-            <span className="w-8 h-8 rounded-full bg-blue-500/20 text-blue-300 flex items-center justify-center text-sm font-bold group-hover:scale-110 transition-transform">
+            <span className="flex h-8 w-8 items-center justify-center rounded-full bg-ledger-soft font-mono text-sm font-bold text-ledger">
               {acc.username[0].toUpperCase()}
             </span>
-            <span className="text-xs font-medium text-gray-200 capitalize">{acc.username}</span>
-            <span className="text-[9px] text-gray-500 leading-none text-center">{acc.tenant}</span>
+            <span className="text-xs font-medium capitalize text-ink">{acc.username}</span>
+            <span className="text-center text-[9px] leading-none text-graphite">{acc.tenant}</span>
           </button>
         ))}
       </div>
 
       <div className="w-full flex items-center gap-3 mb-5">
-        <div className="h-px flex-1 bg-white/10" />
-        <span className="text-[10px] uppercase tracking-wider text-gray-600">or sign in manually</span>
-        <div className="h-px flex-1 bg-white/10" />
+        <div className="h-px flex-1 bg-rule" />
+        <span className="font-mono text-[10px] uppercase tracking-wider text-graphite">or sign in manually</span>
+        <div className="h-px flex-1 bg-rule" />
       </div>
 
       <form onSubmit={handleLogin} className="w-full flex flex-col space-y-4">
         <div>
-          <label className="block text-xs uppercase tracking-wider text-gray-400 mb-1 ml-1" htmlFor="username">Username</label>
+          <label className="mb-1 ml-1 block font-mono text-[11px] uppercase tracking-wider text-graphite" htmlFor="username">Username</label>
           <input
             id="username"
             type="text"
-            className="w-full bg-black/40 border border-white/10 text-white rounded-lg px-4 py-2 focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 transition-all text-sm"
+            className="w-full rounded-lg border border-rule bg-paper px-4 py-2 text-sm text-ink transition-colors focus:border-ledger focus:outline-none focus:ring-1 focus:ring-ledger"
             placeholder="e.g. alice, bob, charlie"
             value={username}
             onChange={(e) => setUsername(e.target.value)}
@@ -100,11 +102,11 @@ export default function Login({ onLoginSuccess, autoLogin, onAutoLoginConsumed }
           />
         </div>
         <div>
-          <label className="block text-xs uppercase tracking-wider text-gray-400 mb-1 ml-1" htmlFor="password">Password</label>
+          <label className="mb-1 ml-1 block font-mono text-[11px] uppercase tracking-wider text-graphite" htmlFor="password">Password</label>
           <input
             id="password"
             type="password"
-            className="w-full bg-black/40 border border-white/10 text-white rounded-lg px-4 py-2 focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 transition-all text-sm"
+            className="w-full rounded-lg border border-rule bg-paper px-4 py-2 text-sm text-ink transition-colors focus:border-ledger focus:outline-none focus:ring-1 focus:ring-ledger"
             placeholder="password123"
             value={password}
             onChange={(e) => setPassword(e.target.value)}
@@ -112,20 +114,25 @@ export default function Login({ onLoginSuccess, autoLogin, onAutoLoginConsumed }
           />
         </div>
 
-        {error && <div className="text-red-400 text-sm py-1 font-medium">{error}</div>}
+        {waking && (
+          <div className="py-1 text-sm text-ledger">
+            Waking up the server. The free hosting sleeps when idle, so this can take up to a minute.
+          </div>
+        )}
+        {error && <div className="py-1 text-sm font-medium text-red-700 dark:text-red-300">{error}</div>}
 
         <button
           type="submit"
-          className="w-full bg-blue-600 hover:bg-blue-500 text-white font-medium py-2 px-4 rounded-lg shadow-[0_0_15px_rgba(59,130,246,0.5)] transition-all hover:scale-[1.02] active:scale-[0.98] mt-2 disabled:opacity-50 flex justify-center items-center"
+          className="mt-2 flex w-full items-center justify-center rounded-full bg-ink px-4 py-2 font-medium text-paper transition-colors hover:bg-ledger disabled:opacity-50"
           disabled={loading || !username.trim()}
         >
           {loading ? (
-             <div className="w-5 h-5 border-2 border-white/20 border-t-white rounded-full animate-spin"></div>
+             <div className="w-5 h-5 border-2 border-paper/30 border-t-paper rounded-full animate-spin"></div>
           ) : "Login"}
         </button>
       </form>
 
-      <div className="mt-5 text-[10px] text-gray-600 text-center leading-relaxed">
+      <div className="mt-5 text-center text-[10px] leading-relaxed text-graphite">
         Every demo account only sees its own tenant's data — try two different accounts
         to see the isolation for yourself.
       </div>

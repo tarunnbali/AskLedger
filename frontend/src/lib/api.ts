@@ -1,5 +1,11 @@
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000/api/v1";
 
+// The backend runs on a free tier that sleeps when idle. While it wakes up,
+// requests fail at the network level (the proxy's response has no CORS
+// headers), so network errors are retried for up to this long.
+const WAKE_TIMEOUT_MS = 75_000;
+const WAKE_RETRY_DELAY_MS = 3_000;
+
 export interface HistoryMessage {
   role: "user" | "assistant";
   content: string;
@@ -12,14 +18,53 @@ export interface ChatResponse {
   explanation?: string;
 }
 
-export async function loginBackend(username: string, password: string = "password123"): Promise<string> {
+/** Fire-and-forget ping so a sleeping backend starts waking before the user clicks. */
+export function warmUpBackend() {
+  fetch(`${API_BASE_URL}/health`).catch(() => {});
+}
+
+async function fetchWithWakeRetry(url: string, init: RequestInit, onWaking?: () => void): Promise<Response> {
+  const deadline = Date.now() + WAKE_TIMEOUT_MS;
+  let notified = false;
+  for (;;) {
+    try {
+      return await fetch(url, init);
+    } catch (error) {
+      // HTTP error responses resolve normally; only network failures land here.
+      // If the backend is already awake, this wasn't a cold start, so don't
+      // keep retrying (a retried chat request would spend LLM quota).
+      const awake = await fetch(`${API_BASE_URL}/health`).then((r) => r.ok).catch(() => false);
+      if (awake) {
+        throw new Error("Something went wrong on the server. Please try again.");
+      }
+      if (Date.now() + WAKE_RETRY_DELAY_MS > deadline) {
+        throw new Error("The server didn't respond. Please try again in a minute.");
+      }
+      if (!notified) {
+        notified = true;
+        onWaking?.();
+      }
+      await new Promise((r) => setTimeout(r, WAKE_RETRY_DELAY_MS));
+    }
+  }
+}
+
+export async function loginBackend(
+  username: string,
+  password: string = "password123",
+  onWaking?: () => void
+): Promise<string> {
   const url = `${API_BASE_URL}/auth/login`;
   try {
-    const response = await fetch(url, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ username, password }),
-    });
+    const response = await fetchWithWakeRetry(
+      url,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ username, password }),
+      },
+      onWaking
+    );
     if (!response.ok) {
       const errorData = await response.json().catch(() => ({}));
       throw new Error(errorData.detail || `Login failed: ${response.status}`);
@@ -35,19 +80,24 @@ export async function loginBackend(username: string, password: string = "passwor
 export async function queryBackend(
   message: string,
   token: string,
-  history: HistoryMessage[] = []
+  history: HistoryMessage[] = [],
+  onWaking?: () => void
 ): Promise<ChatResponse> {
   const url = `${API_BASE_URL}/chat`;
 
   try {
-    const response = await fetch(url, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "Authorization": `Bearer ${token}`
+    const response = await fetchWithWakeRetry(
+      url,
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "Authorization": `Bearer ${token}`
+        },
+        body: JSON.stringify({ question: message, history }),
       },
-      body: JSON.stringify({ question: message, history }),
-    });
+      onWaking
+    );
 
     if (!response.ok) {
       if (response.status === 401) {

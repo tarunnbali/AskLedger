@@ -18,13 +18,13 @@ interface ChatMessageProps {
 function ResultTable({ results }: { results: any[] }) {
   if (!results || results.length === 0) return null;
   return (
-    <div className="glass rounded-xl overflow-hidden border border-white/5 shadow-inner">
+    <div className="overflow-hidden rounded-lg border border-rule bg-surface">
       <div className="overflow-x-auto">
-        <table className="w-full text-left text-sm text-gray-300">
-          <thead className="text-xs uppercase bg-black/40 text-gray-400 border-b border-white/10">
+        <table className="w-full text-left text-sm text-ink">
+          <thead className="border-b border-rule bg-paper-2 font-mono text-[11px] uppercase text-graphite">
             <tr>
               {Object.keys(results[0]).map((key) => (
-                <th key={key} scope="col" className="px-4 py-3 font-semibold whitespace-nowrap">
+                <th key={key} scope="col" className="px-4 py-2.5 font-medium whitespace-nowrap">
                   {key.replace(/_/g, " ")}
                 </th>
               ))}
@@ -32,10 +32,10 @@ function ResultTable({ results }: { results: any[] }) {
           </thead>
           <tbody>
             {results.map((row, rowIndex) => (
-              <tr key={rowIndex} className="border-b border-white/5 hover:bg-white/5 transition-colors last:border-0">
+              <tr key={rowIndex} className="border-b border-rule transition-colors last:border-0 hover:bg-paper">
                 {Object.values(row).map((val: any, colIndex) => (
-                  <td key={colIndex} className="px-4 py-3 whitespace-nowrap">
-                    {val !== null ? String(val) : <span className="text-gray-600 italic">null</span>}
+                  <td key={colIndex} className="px-4 py-2.5 whitespace-nowrap">
+                    {val !== null ? String(val) : <span className="italic text-graphite">null</span>}
                   </td>
                 ))}
               </tr>
@@ -43,10 +43,24 @@ function ResultTable({ results }: { results: any[] }) {
           </tbody>
         </table>
       </div>
-      <div className="px-4 py-2 bg-black/20 text-xs text-gray-500 border-t border-white/5 flex justify-between">
+      <div className="flex justify-between border-t border-rule bg-paper px-4 py-1.5 font-mono text-[11px] text-graphite">
         <span>{results.length} row{results.length !== 1 ? "s" : ""}</span>
       </div>
     </div>
+  );
+}
+
+function SqlBlock({ sql, compact = false }: { sql: string; compact?: boolean }) {
+  return (
+    <details className="group cursor-pointer overflow-hidden rounded-lg border border-rule bg-surface">
+      <summary className={`flex items-center gap-2 text-graphite transition-colors hover:text-ink ${compact ? "px-4 py-2 text-xs" : "p-3 text-sm font-medium"}`}>
+        <Database size={compact ? 12 : 15} className="text-ledger" />
+        <span>{compact ? "View SQL" : "View generated SQL"}</span>
+      </summary>
+      <div className="overflow-x-auto bg-term p-4 font-mono text-xs leading-relaxed text-[#cfe3d5]">
+        <pre><code>{sql}</code></pre>
+      </div>
+    </details>
   );
 }
 
@@ -58,20 +72,20 @@ export default function ChatMessage({ role, text, sql, results, multiResults }: 
     <div className={`flex w-full ${isUser ? "justify-end" : "justify-start"} animate-fade-in`}>
       <div className={`flex flex-col max-w-[85%] md:max-w-[75%] space-y-2 ${isUser ? "items-end" : "items-start"}`}>
         <div
-          className={`flex items-start space-x-3 p-4 rounded-2xl shadow-sm
+          className={`flex items-start space-x-3 rounded-2xl p-4
             ${isUser
-              ? "bg-blue-600 text-white rounded-tr-sm"
+              ? "rounded-tr-sm bg-ink text-paper"
               : isError
-                ? "bg-red-900/40 border border-red-500/30 text-red-200 rounded-tl-sm glass"
-                : "glass bg-[#1a1a1a]/80 text-gray-200 rounded-tl-sm border border-white/10"
+                ? "rounded-tl-sm border border-red-200 bg-red-50 text-red-800 dark:border-red-900/60 dark:bg-red-950/40 dark:text-red-200"
+                : "rounded-tl-sm border border-rule bg-surface text-ink"
             }
           `}
         >
           {/* Avatar Icon */}
-          <div className={`flex-shrink-0 mt-1 w-8 h-8 flex items-center justify-center rounded-full
-            ${isUser ? "bg-white/20" : isError ? "bg-red-500/20" : "bg-blue-500/20 text-blue-400"}
+          <div className={`mt-1 flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-full
+            ${isUser ? "bg-paper/15" : isError ? "bg-red-100 dark:bg-red-900/40" : "bg-ledger-soft text-ledger"}
           `}>
-            {isUser ? <User size={18} /> : isError ? <AlertCircle size={18} className="text-red-400" /> : <Bot size={18} />}
+            {isUser ? <User size={18} /> : isError ? <AlertCircle size={18} className="text-red-600 dark:text-red-300" /> : <Bot size={18} />}
           </div>
 
           {/* Message Content */}
@@ -80,57 +94,43 @@ export default function ChatMessage({ role, text, sql, results, multiResults }: 
           </div>
         </div>
 
-        {/* SQL Accordion (single query) */}
+        {/* SQL (single query) */}
         {!isUser && !isError && sql && (
-          <div className="w-full mt-2 pl-4 pr-1">
-            <details className="group glass rounded-xl border-l-[3px] border-l-blue-500 overflow-hidden cursor-pointer">
-              <summary className="flex items-center space-x-2 p-3 text-sm text-gray-300 hover:bg-white/5 transition-colors font-medium">
-                <Database size={16} className="text-blue-400" />
-                <span>View Generated SQL</span>
-              </summary>
-              <div className="p-4 bg-black/40 border-t border-white/5 overflow-x-auto text-xs font-mono text-gray-400 leading-relaxed">
-                <pre><code>{sql}</code></pre>
-              </div>
-            </details>
+          <div className="mt-2 w-full pl-4 pr-1">
+            <SqlBlock sql={sql} />
           </div>
         )}
 
         {/* Single query result table */}
         {!isUser && !isError && results && results.length > 0 && (
-          <div className="w-full mt-2 pl-4 pr-1 animate-fade-in" style={{ animationDelay: "200ms" }}>
+          <div className="mt-2 w-full animate-fade-in pl-4 pr-1" style={{ animationDelay: "200ms" }}>
             <ResultTable results={results} />
           </div>
         )}
 
         {/* Multi-query sub-results */}
         {!isUser && !isError && multiResults && multiResults.length > 0 && (
-          <div className="w-full mt-2 pl-4 pr-1 space-y-3 animate-fade-in" style={{ animationDelay: "200ms" }}>
+          <div className="mt-2 w-full space-y-3 animate-fade-in pl-4 pr-1" style={{ animationDelay: "200ms" }}>
             {multiResults.map((sub, idx) => (
-              <div key={idx} className="glass rounded-xl border border-white/10 overflow-hidden">
+              <div key={idx} className="overflow-hidden rounded-lg border border-rule bg-surface">
                 {/* Sub-question header */}
-                <div className="flex items-center gap-2 px-4 py-3 bg-black/30 border-b border-white/10">
-                  <HelpCircle size={14} className="text-blue-400 flex-shrink-0" />
-                  <span className="text-xs text-gray-300 font-medium">{sub.question}</span>
+                <div className="flex items-center gap-2 border-b border-rule bg-paper-2 px-4 py-2.5">
+                  <HelpCircle size={14} className="flex-shrink-0 text-ledger" />
+                  <span className="text-xs font-medium text-ink">{sub.question}</span>
                 </div>
                 {/* Sub-explanation */}
-                <div className="px-4 py-3 text-sm text-gray-200">{sub.explanation}</div>
+                <div className="px-4 py-3 text-sm text-ink">{sub.explanation}</div>
 
                 {/* Sub SQL */}
                 {sub.sql_query && (
-                  <details className="group border-t border-white/5 cursor-pointer">
-                    <summary className="flex items-center space-x-2 px-4 py-2 text-xs text-gray-400 hover:bg-white/5 transition-colors">
-                      <Database size={12} className="text-blue-400" />
-                      <span>View SQL</span>
-                    </summary>
-                    <div className="px-4 pb-3 bg-black/30 overflow-x-auto text-xs font-mono text-gray-500 leading-relaxed">
-                      <pre><code>{sub.sql_query}</code></pre>
-                    </div>
-                  </details>
+                  <div className="border-t border-rule px-3 py-2">
+                    <SqlBlock sql={sub.sql_query} compact />
+                  </div>
                 )}
 
                 {/* Sub results table */}
                 {sub.results && sub.results.length > 0 && (
-                  <div className="border-t border-white/5">
+                  <div className="border-t border-rule p-3">
                     <ResultTable results={sub.results} />
                   </div>
                 )}

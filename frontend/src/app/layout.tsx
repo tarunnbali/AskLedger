@@ -17,13 +17,27 @@ export const metadata: Metadata = {
   description: "Ask your subscription billing data questions in plain English.",
 };
 
+// Runs before first paint: use the saved theme, or fall back to the OS setting,
+// so the page never flashes the wrong theme.
+const themeScript = `(function () {
+  var theme;
+  try { theme = localStorage.getItem("theme"); } catch (e) {}
+  if (theme !== "light" && theme !== "dark") {
+    theme = window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
+  }
+  document.documentElement.dataset.theme = theme;
+})();`;
+
 export default function RootLayout({
   children,
 }: Readonly<{
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="en">
+    <html lang="en" suppressHydrationWarning>
+      <head>
+        <script dangerouslySetInnerHTML={{ __html: themeScript }} />
+      </head>
       <body
         className={`${geistSans.variable} ${geistMono.variable} antialiased`}
       >

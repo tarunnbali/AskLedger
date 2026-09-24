@@ -1,3 +1,5 @@
+import logging
+
 import openai
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
@@ -12,9 +14,11 @@ from app.api.v1.auth import router as auth_router
 from app.api.v1.chat import router as chat_router
 from app.api.v1.health import router as health_router
 
+logger = logging.getLogger("askledger")
+
 app = FastAPI(title=settings.PROJECT_NAME)
 
-# Rate limiting — protects the OpenRouter API bill on a public demo deployment.
+# Rate limiting — protects the free LLM quota on a public demo deployment.
 # chat.py applies settings.CHAT_RATE_LIMIT to the /chat endpoint specifically.
 app.state.limiter = limiter
 app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
@@ -36,6 +40,25 @@ async def llm_error_handler(request: Request, exc: openai.APIError):
         status_code=502,
         content={"detail": "The AI service is temporarily unavailable. Please try again in a moment."},
     )
+
+
+# Anything else unhandled: log the traceback and return JSON. Registered before
+# CORSMiddleware so CORS wraps it — otherwise the 500 lacks CORS headers and
+# browsers report a misleading CORS error instead of the real failure.
+@app.middleware("http")
+async def catch_unhandled_errors(request: Request, call_next):
+    try:
+        return await call_next(request)
+    except Exception as exc:
+        logger.exception("Unhandled error on %s %s", request.method, request.url.path)
+        return JSONResponse(
+            status_code=500,
+            content={
+                "detail": "Something went wrong on the server. Please try again.",
+                "error_type": type(exc).__name__,
+            },
+        )
+
 
 # Add CORS middleware — origins come from ALLOWED_ORIGINS in .env so the
 # deployed frontend URL can be added without touching code.

@@ -1,0 +1,257 @@
+# SQL accuracy benchmark. Each question is asked as tenant Acme Corp (user alice)
+# against the deterministic demo data built by harness.py.
+#
+#   gold     SQL that returns the correct answer. Written without entity_id filters:
+#            RLS scopes it to the tenant, exactly as it does for model output.
+#   ordered  row order is part of the answer (default: false)
+#   smoke    included in the quick sample that runs on every pull request
+#
+# A prediction is correct when its result contains the gold result: same number
+# of rows, and every gold column matches some predicted column value-for-value.
+# Extra columns and column names don't matter.
+
+questions:
+  # ── Subscription status ───────────────────────────────────────────────────
+  - id: count-all
+    smoke: true
+    question: How many subscriptions do I have in total?
+    gold: SELECT count(*) FROM subscriptions
+
+  - id: count-active
+    smoke: true
+    question: How many active subscriptions do I have?
+    gold: SELECT count(*) FROM subscriptions WHERE status = 'active'
+
+  - id: count-cancelled
+    question: How many cancelled subscriptions do I have?
+    gold: SELECT count(*) FROM subscriptions WHERE status = 'cancelled'
+
+  - id: count-pending
+    question: How many pending subscriptions do I have?
+    gold: SELECT count(*) FROM subscriptions WHERE status = 'pending'
+
+  - id: list-cancelled
+    smoke: true
+    question: List the names of my cancelled subscriptions.
+    gold: SELECT subscription_name FROM subscriptions WHERE status = 'cancelled'
+
+  - id: list-pending
+    question: Which of my subscriptions are pending?
+    gold: SELECT subscription_name FROM subscriptions WHERE status = 'pending'
+
+  - id: count-by-plan
+    question: How many subscriptions do I have on each plan type?
+    gold: SELECT plan_type, count(*) FROM subscriptions GROUP BY plan_type
+
+  - id: count-by-status
+    question: How many of my subscriptions are in each status?
+    gold: SELECT status, count(*) FROM subscriptions GROUP BY status
+
+  - id: count-monthly
+    question: How many of my subscriptions are on a monthly plan?
+    gold: SELECT count(*) FROM subscriptions WHERE plan_type = 'monthly'
+
+  - id: active-annual
+    smoke: true
+    question: Which of my active subscriptions are on an annual plan?
+    gold: SELECT subscription_name FROM subscriptions WHERE status = 'active' AND plan_type = 'annual'
+
+  # ── Pricing & discounts ───────────────────────────────────────────────────
+  - id: price-of-named
+    smoke: true
+    question: What is the billing amount for Database Hosting Managed?
+    gold: >-
+      SELECT sft.billing_amount FROM subscriptions s
+      JOIN subscription_financial_terms sft ON sft.subscription_id = s.id
+      WHERE s.subscription_name = 'Database Hosting Managed'
+
+  - id: discounted-list
+    question: Which of my subscriptions have a discount?
+    gold: >-
+      SELECT s.subscription_name FROM subscriptions s
+      JOIN subscription_financial_terms sft ON sft.subscription_id = s.id
+      WHERE sft.discount_rate > 0
+
+  - id: no-discount-count
+    question: How many of my subscriptions have no discount?
+    gold: >-
+      SELECT count(*) FROM subscriptions s
+      JOIN subscription_financial_terms sft ON sft.subscription_id = s.id
+      WHERE sft.discount_rate = 0
+
+  - id: twenty-percent
+    question: Which subscriptions have a 20% discount?
+    gold: >-
+      SELECT s.subscription_name FROM subscriptions s
+      JOIN subscription_financial_terms sft ON sft.subscription_id = s.id
+      WHERE sft.discount_rate = 20
+
+  - id: avg-discount
+    question: What is the average discount rate across all my subscriptions?
+    gold: SELECT avg(discount_rate) FROM subscription_financial_terms
+
+  - id: most-expensive-active
+    smoke: true
+    question: What is my most expensive active subscription by billing amount?
+    gold: >-
+      SELECT s.subscription_name FROM subscriptions s
+      JOIN subscription_financial_terms sft ON sft.subscription_id = s.id
+      WHERE s.status = 'active' ORDER BY sft.billing_amount DESC LIMIT 1
+
+  - id: cheapest
+    question: What is my cheapest subscription by billing amount?
+    gold: >-
+      SELECT s.subscription_name FROM subscriptions s
+      JOIN subscription_financial_terms sft ON sft.subscription_id = s.id
+      ORDER BY sft.billing_amount ASC LIMIT 1
+
+  - id: sum-active-billing
+    question: What is the combined billing amount of all my active subscriptions?
+    gold: >-
+      SELECT sum(sft.billing_amount) FROM subscriptions s
+      JOIN subscription_financial_terms sft ON sft.subscription_id = s.id
+      WHERE s.status = 'active'
+
+  - id: discounted-price
+    question: What is the price of Monitoring Suite Advanced after its discount?
+    gold: >-
+      SELECT sft.billing_amount * (1 - sft.discount_rate / 100) FROM subscriptions s
+      JOIN subscription_financial_terms sft ON sft.subscription_id = s.id
+      WHERE s.subscription_name = 'Monitoring Suite Advanced'
+
+  - id: avg-annual-price
+    question: What is the average billing amount of my annual subscriptions?
+    gold: >-
+      SELECT avg(sft.billing_amount) FROM subscriptions s
+      JOIN subscription_financial_terms sft ON sft.subscription_id = s.id
+      WHERE s.plan_type = 'annual'
+
+  # ── Revenue ───────────────────────────────────────────────────────────────
+  - id: arr-active
+    smoke: true
+    question: What is the total ARR of my active subscriptions?
+    gold: >-
+      SELECT sum(sc.total_revenue) FROM subscriptions s
+      JOIN subscription_calculations sc ON sc.subscription_id = s.id
+      WHERE s.status = 'active' AND sc.calculation_type = 'ARR' AND sc.is_active = TRUE
+
+  - id: mrr-active-revenue
+    question: What is the total revenue from my active subscriptions that are tracked as MRR?
+    gold: >-
+      SELECT sum(sc.total_revenue) FROM subscriptions s
+      JOIN subscription_calculations sc ON sc.subscription_id = s.id
+      WHERE s.status = 'active' AND sc.calculation_type = 'MRR' AND sc.is_active = TRUE
+
+  - id: pending-revenue
+    question: How much total revenue do my pending subscriptions represent?
+    gold: >-
+      SELECT sum(sc.total_revenue) FROM subscriptions s
+      JOIN subscription_calculations sc ON sc.subscription_id = s.id
+      WHERE s.status = 'pending' AND sc.is_active = TRUE
+
+  - id: total-active-calcs
+    question: What is my total projected revenue across all active revenue calculations?
+    gold: SELECT sum(total_revenue) FROM subscription_calculations WHERE is_active = TRUE
+
+  - id: top-active-revenue
+    question: Which of my active subscriptions generates the most revenue?
+    gold: >-
+      SELECT s.subscription_name FROM subscriptions s
+      JOIN subscription_calculations sc ON sc.subscription_id = s.id
+      WHERE s.status = 'active' AND sc.is_active = TRUE
+      ORDER BY sc.total_revenue DESC LIMIT 1
+
+  - id: arr-vs-mrr-count
+    question: How many of my subscriptions are tracked as ARR and how many as MRR?
+    gold: SELECT calculation_type, count(*) FROM subscription_calculations GROUP BY calculation_type
+
+  - id: cancelled-revenue
+    question: How much revenue did my cancelled subscriptions account for?
+    gold: >-
+      SELECT sum(sc.total_revenue) FROM subscriptions s
+      JOIN subscription_calculations sc ON sc.subscription_id = s.id
+      WHERE s.status = 'cancelled'
+
+  # ── Billing & dates ───────────────────────────────────────────────────────
+  - id: periods-of-named
+    smoke: true
+    question: How many billing periods does CI/CD Pipeline Pro have?
+    gold: >-
+      SELECT count(*) FROM billing_schedules bs
+      JOIN subscriptions s ON s.id = bs.subscription_id
+      WHERE s.subscription_name = 'CI/CD Pipeline Pro'
+
+  - id: first-bill-pending
+    question: When does billing start for Cloud Storage Team?
+    gold: >-
+      SELECT min(bs.billing_start_date) FROM billing_schedules bs
+      JOIN subscriptions s ON s.id = bs.subscription_id
+      WHERE s.subscription_name = 'Cloud Storage Team'
+
+  - id: due-next-14-days
+    smoke: true
+    question: How many distinct subscriptions have a billing period starting within the next 14 days?
+    gold: >-
+      SELECT count(DISTINCT subscription_id) FROM billing_schedules
+      WHERE billing_start_date >= CURRENT_DATE AND billing_start_date <= CURRENT_DATE + 14
+
+  - id: earliest-upcoming
+    question: What is the single earliest upcoming billing date across all my subscriptions?
+    gold: SELECT min(billing_start_date) FROM billing_schedules WHERE billing_start_date >= CURRENT_DATE
+
+  - id: billed-to-date
+    question: What is the total amount across all billing periods that have already ended?
+    gold: SELECT sum(billing_amount) FROM billing_schedules WHERE billing_end_date < CURRENT_DATE
+
+  - id: ended-periods-named
+    question: How many billing periods have already ended for Database Hosting Managed?
+    gold: >-
+      SELECT count(*) FROM billing_schedules bs
+      JOIN subscriptions s ON s.id = bs.subscription_id
+      WHERE s.subscription_name = 'Database Hosting Managed' AND bs.billing_end_date < CURRENT_DATE
+
+  - id: upcoming-active-total
+    question: What is the total of all upcoming billing amounts for my active subscriptions?
+    gold: >-
+      SELECT sum(bs.billing_amount) FROM billing_schedules bs
+      JOIN subscriptions s ON s.id = bs.subscription_id
+      WHERE s.status = 'active' AND bs.billing_start_date >= CURRENT_DATE
+
+  - id: most-periods
+    question: Which subscription has the most billing periods?
+    gold: >-
+      SELECT s.subscription_name FROM subscriptions s
+      JOIN billing_schedules bs ON bs.subscription_id = s.id
+      GROUP BY s.subscription_name ORDER BY count(*) DESC LIMIT 1
+
+  - id: last-period-cancelled
+    question: When did the last billing period of Monitoring Suite Basic end?
+    gold: >-
+      SELECT max(bs.billing_end_date) FROM billing_schedules bs
+      JOIN subscriptions s ON s.id = bs.subscription_id
+      WHERE s.subscription_name = 'Monitoring Suite Basic'
+
+  # ── History ───────────────────────────────────────────────────────────────
+  - id: created-last-30-days
+    question: How many subscriptions were created in the last 30 days?
+    gold: SELECT count(*) FROM subscriptions WHERE created_at >= CURRENT_DATE - INTERVAL '30 days'
+
+  - id: oldest
+    question: Which is my oldest subscription?
+    gold: SELECT subscription_name FROM subscriptions ORDER BY created_at ASC LIMIT 1
+
+  # ── Combined views ────────────────────────────────────────────────────────
+  - id: active-with-amounts
+    smoke: true
+    question: List my active subscriptions with their billing amounts.
+    gold: >-
+      SELECT s.subscription_name, sft.billing_amount FROM subscriptions s
+      JOIN subscription_financial_terms sft ON sft.subscription_id = s.id
+      WHERE s.status = 'active'
+
+  - id: billing-by-plan
+    question: What is the total billing amount for each plan type?
+    gold: >-
+      SELECT s.plan_type, sum(sft.billing_amount) FROM subscriptions s
+      JOIN subscription_financial_terms sft ON sft.subscription_id = s.id
+      GROUP BY s.plan_type

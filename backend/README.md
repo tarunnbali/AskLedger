@@ -48,13 +48,15 @@ flowchart TD
 
 ## 🛡️ Tenant Isolation
 
-This application uses a defense-in-depth approach, leaning entirely on **PostgreSQL Row-Level Security (RLS)** as the iron-clad failsafe.
+Tenant isolation is enforced by **PostgreSQL Row-Level Security**, not by the prompt, so a wrong or hostile generated query still can't cross tenants.
 
-1. **Authentication Token:** Each user request contains a validated JWT containing their specific company `entity_id`.
-2. **Session Variable Injection:** Immediately before executing any natural language SQL, `query_service.py` sets a secure PostgreSQL environmental session variable:
-   `db.execute(text(f"SET app.current_tenant = '{entity_id}'"))`
-3. **RLS Interception:** Every database table (`subscriptions`, `billing_schedules`, etc.) has an active RLS policy defined via `rls_setup.sql`. The database implicitly transforms *every* `SELECT/JOIN` query to structurally require `WHERE entity_id = current_setting('app.current_tenant')`.
-4. **Result:** Even if a user somehow maliciously engineers a query asking for all data (`SELECT * FROM subscriptions`), the database categorically refuses to yield rows not belonging to their `entity_id`.
+1. **Authentication:** each request carries a JWT; the server looks up the user's `entity_id` (tenant).
+2. **Two database roles:** the app connects as `askledger_app` (`NOINHERIT`, no `BYPASSRLS`), which can read `users` for login but no tenant data. Each chat query runs inside a transaction that switches to `askledger_query` (`SET LOCAL ROLE`), which can read only the four tenant tables.
+3. **Transaction-scoped tenant:** `SELECT set_config('app.current_tenant', :tenant, true)` sets the tenant for that transaction only, so it never lingers on a pooled connection.
+4. **RLS policies** ([db/rls.sql](db/rls.sql)) are enabled *and forced* on every tenant table and filter by `app.current_tenant`. With no tenant set, queries see nothing.
+5. **Verified on every pull request** by the isolation gate in [tests/test_tenant_isolation.py](tests/test_tenant_isolation.py).
+
+Setup is one idempotent command (`python -m scripts.setup_database`), shared with the tests so they check the real configuration.
 
 ---
 

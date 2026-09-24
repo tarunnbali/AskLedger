@@ -1,0 +1,7 @@
+-r requirements.txt
+pytest==9.1.1
+httpx==0.28.1
+ruff==0.16.9
+# Local only: an embedded Postgres for tests and evals when
+# TEST_ADMIN_DATABASE_URL isn't set. CI uses a Postgres service instead.
+# pgserver==0.1.4

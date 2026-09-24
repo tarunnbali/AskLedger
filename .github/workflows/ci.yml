@@ -1,0 +1,195 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+env:
+  PYTHON_VERSION: "3.11"
+  # Postgres service container, shared by the test and eval jobs
+  TEST_ADMIN_DATABASE_URL: postgresql://postgres:postgres@localhost:5432/postgres
+
+jobs:
+  lint:
+    name: Lint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+      - run: pip install ruff==0.16.9
+      - name: Ruff (backend)
+        working-directory: backend
+        run: ruff check .
+      - name: Ruff (evals)
+        working-directory: evals
+        run: ruff check .
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - name: ESLint + TypeScript (frontend)
+        working-directory: frontend
+        run: |
+          npm ci
+          npx eslint .
+          npx tsc --noEmit
+
+  unit-tests:
+    name: Unit tests
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_PASSWORD: postgres
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U postgres" --health-interval 5s --health-timeout 5s --health-retries 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: pip
+          cache-dependency-path: backend/requirements-dev.txt
+      - run: pip install -r backend/requirements-dev.txt
+      - name: Backend unit tests
+        working-directory: backend
+        run: pytest -m "not isolation"
+      - name: Eval comparison tests
+        working-directory: evals
+        run: pytest test_results_match.py -p no:cacheprovider
+
+  isolation-gate:
+    name: Tenant isolation gate
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_PASSWORD: postgres
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U postgres" --health-interval 5s --health-timeout 5s --health-retries 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: pip
+          cache-dependency-path: backend/requirements-dev.txt
+      - run: pip install -r backend/requirements-dev.txt
+      - name: Try to read other tenants' data (must all fail)
+        working-directory: backend
+        run: pytest -m isolation -v
+
+  accuracy-gate:
+    name: SQL accuracy gate
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_PASSWORD: postgres
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U postgres" --health-interval 5s --health-timeout 5s --health-retries 10
+    env:
+      GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: pip
+          cache-dependency-path: backend/requirements-dev.txt
+      - run: pip install -r backend/requirements-dev.txt
+      - name: Validate the benchmark (gold queries, no Gemini)
+        run: python evals/run_eval.py --check-gold
+      # Predictions are keyed by prompt + models + question inside the file, so a
+      # stale cache is harmless: unchanged questions are reused, new ones are asked.
+      - name: Restore cached predictions
+        uses: actions/cache@v4
+        with:
+          path: evals/.cache
+          key: eval-predictions-${{ hashFiles('backend/prompts/**', 'evals/questions.yaml', 'backend/app/core/config.py') }}-${{ github.run_id }}
+          restore-keys: |
+            eval-predictions-${{ hashFiles('backend/prompts/**', 'evals/questions.yaml', 'backend/app/core/config.py') }}-
+            eval-predictions-
+      - name: Require the Gemini key
+        run: |
+          if [ -z "$GEMINI_API_KEY" ]; then
+            echo "::error::Add a GEMINI_API_KEY repository secret: the accuracy gate can't run without it."
+            exit 1
+          fi
+      - name: Score SQL accuracy (10-question sample on PRs, all 40 on main)
+        run: |
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            python evals/run_eval.py --sample --tolerance 0.1
+          else
+            python evals/run_eval.py
+          fi
+      - name: Upload eval report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: eval-report
+          path: evals/reports/
+          if-no-files-found: ignore
+
+  image:
+    name: Build, scan and publish image
+    runs-on: ubuntu-latest
+    needs: [lint, unit-tests, isolation-gate]
+    permissions:
+      contents: read
+      packages: write
+    env:
+      IMAGE: ghcr.io/${{ github.repository_owner }}/askledger-backend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/setup-buildx-action@v3
+      - name: Build image
+        uses: docker/build-push-action@v6
+        with:
+          context: backend
+          load: true
+          tags: askledger-backend:ci
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+      - name: Smoke-test the container
+        run: |
+          docker run -d --name api -p 8000:8000 \
+            -e DATABASE_URL=postgresql://unused@localhost/unused -e GEMINI_API_KEY=unused -e JWT_SECRET=unused \
+            askledger-backend:ci
+          for i in $(seq 1 20); do curl -fsS http://localhost:8000/health && break; sleep 1; done
+          test "$(docker inspect --format '{{.Config.User}}' askledger-backend:ci)" = "10001"
+          docker rm -f api
+      - name: Scan for vulnerabilities (fail on fixable HIGH/CRITICAL)
+        uses: aquasecurity/trivy-action@0.28.0
+        with:
+          image-ref: askledger-backend:ci
+          severity: CRITICAL,HIGH
+          ignore-unfixed: true
+          exit-code: "1"
+      - name: Publish to GHCR (main only)
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        run: |
+          echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u "${{ github.actor }}" --password-stdin
+          IMAGE_LC=$(echo "$IMAGE" | tr '[:upper:]' '[:lower:]')
+          for tag in "${{ github.sha }}" latest; do
+            docker tag askledger-backend:ci "$IMAGE_LC:$tag"
+            docker push "$IMAGE_LC:$tag"
+          done

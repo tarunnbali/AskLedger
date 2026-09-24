@@ -18,6 +18,10 @@ class Settings(BaseSettings):
     GEMINI_SQL_MODELS: str = "gemini-3.6-flash,gemini-3.5-flash,gemini-3.5-flash-lite"
     GEMINI_FAST_MODELS: str = "gemini-3.5-flash-lite,gemini-3.5-flash,gemini-3.6-flash"
 
+    # Which prompts/sql_generation/<version>.yaml to use. Changing it ships a new
+    # prompt; the SQL accuracy gate scores each version before it merges.
+    SQL_PROMPT_VERSION: str = "v1"
+
     MAX_SQL_ROWS: int = 100
 
     # JWT settings

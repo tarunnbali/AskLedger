@@ -1,8 +1,12 @@
 import re
 
 from app.core.config import settings
-from app.prompts.nl_to_sql_prompt import build_prompt
+from app.prompts.registry import Prompt, load_prompt
 from app.services.llm import complete
+
+
+def current_prompt() -> Prompt:
+    return load_prompt("sql_generation", settings.SQL_PROMPT_VERSION)
 
 
 def clean_sql(text: str) -> str:
@@ -16,13 +20,25 @@ def clean_sql(text: str) -> str:
     return text.strip()
 
 
-def generate_sql(question: str, history: list = []) -> str:
+def _history_block(history: list) -> str:
+    if not history:
+        return ""
+    lines = "".join(f"  {'User' if m.role == 'user' else 'Assistant'}: {m.content}\n" for m in history)
+    return f"Conversation so far:\n{lines}\n"
+
+
+def build_prompt(question: str, history: list | None = None, prompt: Prompt | None = None) -> str:
+    prompt = prompt or current_prompt()
+    return prompt.render("generate", schema=prompt.fields["schema"], history=_history_block(history), question=question)
+
+
+def generate_sql(question: str, history: list | None = None, prompt: Prompt | None = None) -> str:
     """
     Returns either a raw SQL string, or a string starting with
     'CLARIFICATION_NEEDED:' if the model needs more information.
     """
-    prompt = build_prompt(question, history)
-    raw = complete(prompt, settings.sql_models)
+    # Temperature 0: the same question should get the same SQL
+    raw = complete(build_prompt(question, history, prompt), settings.sql_models, temperature=0)
 
     # Check if Gemini flagged the question as ambiguous
     if raw.upper().startswith("CLARIFICATION_NEEDED:"):
@@ -31,19 +47,7 @@ def generate_sql(question: str, history: list = []) -> str:
     return clean_sql(raw)
 
 
-def fix_sql(question: str, sql: str, error: str) -> str:
-    retry_prompt = f"""The following SQL query failed.
-
-User Question: {question}
-
-Failed SQL:
-{sql}
-
-Database Error:
-{error}
-
-Fix the SQL query. Return ONLY the raw SQL, no markdown, no backticks, no explanations.
-Only SELECT queries are allowed.
-Do NOT include entity_id in the WHERE clause.
-"""
-    return clean_sql(complete(retry_prompt, settings.sql_models))
+def fix_sql(question: str, sql: str, error: str, prompt: Prompt | None = None) -> str:
+    prompt = prompt or current_prompt()
+    fix_prompt = prompt.render("fix", question=question, sql=sql, error=error)
+    return clean_sql(complete(fix_prompt, settings.sql_models, temperature=0))

@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useRef, FormEvent } from "react";
-import { loginBackend } from "@/lib/api";
+import { errorMessage, loginBackend } from "@/lib/api";
 
 interface LoginProps {
   onLoginSuccess: (token: string, username: string) => void;
@@ -29,8 +29,8 @@ export default function Login({ onLoginSuccess, autoLogin, onAutoLoginConsumed }
     try {
       const token = await loginBackend(u, p, () => setWaking(true));
       onLoginSuccess(token, u);
-    } catch (err: any) {
-      setError(err.message || "Failed to login");
+    } catch (err) {
+      setError(errorMessage(err, "Failed to login"));
     } finally {
       setLoading(false);
       setWaking(false);
@@ -133,7 +133,7 @@ export default function Login({ onLoginSuccess, autoLogin, onAutoLoginConsumed }
       </form>
 
       <div className="mt-5 text-center text-[10px] leading-relaxed text-graphite">
-        Every demo account only sees its own tenant's data — try two different accounts
+        Every demo account only sees its own tenant&apos;s data — try two different accounts
         to see the isolation for yourself.
       </div>
     </div>

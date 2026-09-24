@@ -4,7 +4,7 @@ import { useState, useRef, useEffect } from "react";
 import { Sparkles } from "lucide-react";
 import ChatMessage from "./ChatMessage";
 import ChatInput from "./ChatInput";
-import { queryBackend } from "@/lib/api";
+import { errorMessage, queryBackend, type ResultRow, type SubResult } from "@/lib/api";
 
 const SUGGESTIONS = [
   "What's my total active ARR?",
@@ -20,14 +20,9 @@ interface Message {
   role: MessageRole;
   text: string;
   sql?: string | null;
-  results?: any[] | null;
+  results?: ResultRow[] | null;
   // For multi_query responses — array of sub-results
-  multiResults?: Array<{
-    question: string;
-    sql_query: string | null;
-    results: any[] | null;
-    explanation: string;
-  }> | null;
+  multiResults?: SubResult[] | null;
 }
 
 interface ChatInterfaceProps {
@@ -98,12 +93,7 @@ export default function ChatInterface({ token, initialQuestion, onInitialQuestio
 
       if (response.type === "multi_query") {
         // Multi-query: render a summary + sub-results stored separately
-        const multiResults = (response as any).results as Array<{
-          question: string;
-          sql_query: string | null;
-          results: any[] | null;
-          explanation: string;
-        }>;
+        const multiResults = (response.results ?? []) as SubResult[];
         assistantMessage = {
           id: Date.now().toString() + "-assistant",
           role: "assistant",
@@ -128,18 +118,18 @@ export default function ChatInterface({ token, initialQuestion, onInitialQuestio
           role: "assistant",
           text: response.explanation || "Here are your results:",
           sql: response.type === "data_query" ? response.sql_query : null,
-          results: response.type === "data_query" ? response.results : null,
+          results: response.type === "data_query" ? (response.results as ResultRow[] | null | undefined) : null,
         };
       }
 
       setMessages((prev) => [...prev, assistantMessage]);
-    } catch (err: any) {
-      const errorMessage: Message = {
+    } catch (err) {
+      const failure: Message = {
         id: Date.now().toString() + "-error",
         role: "error",
-        text: err.message || "Failed to execute query. Please check your connection to the backend.",
+        text: errorMessage(err, "Failed to execute query. Please check your connection to the backend."),
       };
-      setMessages((prev) => [...prev, errorMessage]);
+      setMessages((prev) => [...prev, failure]);
     } finally {
       setLoading(false);
       setWaking(false);

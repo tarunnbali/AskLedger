@@ -18,6 +18,14 @@ from app.core.config import settings
 router = APIRouter()
 
 
+def _validate(sql: str) -> None:
+    # validate_sql raises a bare Exception, which would surface as a CORS-less 500
+    try:
+        validate_sql(sql)
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=f"Query rejected for safety: {e}")
+
+
 def _run_single_query(question: str, entity_id: str, history: list, username: str = "") -> dict:
     """
     Full pipeline for a single data question:
@@ -31,7 +39,7 @@ def _run_single_query(question: str, entity_id: str, history: list, username: st
         clarification = sql[len("CLARIFICATION_NEEDED:"):].strip()
         return {"type": "clarification", "explanation": clarification, "sql_query": None, "results": None}
 
-    validate_sql(sql)
+    _validate(sql)
     sql = enforce_limit(sql, settings.MAX_SQL_ROWS)
 
     try:
@@ -39,7 +47,7 @@ def _run_single_query(question: str, entity_id: str, history: list, username: st
         final_sql = sql
     except Exception as e:
         fixed_sql = fix_sql(question, sql, str(e))
-        validate_sql(fixed_sql)
+        _validate(fixed_sql)
         final_sql = enforce_limit(fixed_sql, settings.MAX_SQL_ROWS)
         try:
             results = run_query(final_sql, entity_id)

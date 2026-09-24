@@ -1,14 +1,8 @@
 import re
 
-from openai import OpenAI
-
 from app.core.config import settings
 from app.prompts.nl_to_sql_prompt import build_prompt
-
-client = OpenAI(
-    base_url=settings.GEMINI_BASE_URL,
-    api_key=settings.GEMINI_API_KEY,
-)
+from app.services.llm import complete
 
 
 def clean_sql(text: str) -> str:
@@ -28,11 +22,7 @@ def generate_sql(question: str, history: list = []) -> str:
     'CLARIFICATION_NEEDED:' if the model needs more information.
     """
     prompt = build_prompt(question, history)
-    response = client.chat.completions.create(
-        model=settings.GEMINI_MODEL,
-        messages=[{"role": "user", "content": prompt}]
-    )
-    raw = response.choices[0].message.content.strip()
+    raw = complete(prompt, settings.sql_models)
 
     # Check if Gemini flagged the question as ambiguous
     if raw.upper().startswith("CLARIFICATION_NEEDED:"):
@@ -56,8 +46,4 @@ Fix the SQL query. Return ONLY the raw SQL, no markdown, no backticks, no explan
 Only SELECT queries are allowed.
 Do NOT include entity_id in the WHERE clause.
 """
-    response = client.chat.completions.create(
-        model=settings.GEMINI_MODEL,
-        messages=[{"role": "user", "content": retry_prompt}]
-    )
-    return clean_sql(response.choices[0].message.content)
+    return clean_sql(complete(retry_prompt, settings.sql_models))

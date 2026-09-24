@@ -1,5 +1,7 @@
-from fastapi import FastAPI
+import openai
+from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 from slowapi import _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
 
@@ -16,6 +18,24 @@ app = FastAPI(title=settings.PROJECT_NAME)
 # chat.py applies settings.CHAT_RATE_LIMIT to the /chat endpoint specifically.
 app.state.limiter = limiter
 app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
+
+
+# LLM failures (e.g. the free-tier daily quota running out) would otherwise be
+# unhandled 500s without CORS headers, which browsers misreport as CORS errors.
+@app.exception_handler(openai.RateLimitError)
+async def llm_quota_handler(request: Request, exc: openai.RateLimitError):
+    return JSONResponse(
+        status_code=503,
+        content={"detail": "The demo has used up its free AI quota for now. Please try again later."},
+    )
+
+
+@app.exception_handler(openai.APIError)
+async def llm_error_handler(request: Request, exc: openai.APIError):
+    return JSONResponse(
+        status_code=502,
+        content={"detail": "The AI service is temporarily unavailable. Please try again in a moment."},
+    )
 
 # Add CORS middleware — origins come from ALLOWED_ORIGINS in .env so the
 # deployed frontend URL can be added without touching code.

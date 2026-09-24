@@ -108,6 +108,9 @@ Rules:
 11. Use table aliases for all tables (s, sft, bs, sc) as defined in the schema.
 12. IMPORTANT — If the question is too vague or ambiguous to answer correctly without making assumptions, return ONLY this exact text: CLARIFICATION_NEEDED: <your clarifying question here>
     This includes: questions mentioning "subscription" without specifying which one when only a single result is expected (e.g. "cancel my subscription", "what is my plan" with no name).
+    It does NOT include questions that can be answered across ALL of the user's subscriptions — answer these directly:
+    rankings and superlatives ("most expensive", "cheapest", "highest discount"), counts, totals, lists,
+    and "next payment" questions (use the per-subscription pattern in rule 9).
 
 Schema:
 {SCHEMA_CONTEXT}

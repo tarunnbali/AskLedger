@@ -4,14 +4,9 @@ Uses Gemini to classify user messages into 4 categories, generate clarifying
 questions for ambiguous inputs, handle conversational replies, and explain results.
 """
 import json
-from openai import OpenAI
 
 from app.core.config import settings
-
-client = OpenAI(
-    base_url=settings.GEMINI_BASE_URL,
-    api_key=settings.GEMINI_API_KEY,
-)
+from app.services.llm import complete
 
 
 def _format_history(history: list) -> str:
@@ -52,6 +47,8 @@ IMPORTANT distinction:
 - "active AND monthly subscriptions" = data_query (one question, multiple filters on the SAME topic)
 - "pending subscriptions AND next payment date" = multi_query (two DIFFERENT data topics)
 - "show me X or Y" = ambiguous (user is unsure)
+- "most expensive subscription", "cheapest plan", "when is my next payment", "how many subscriptions" = data_query
+  (answerable across ALL of the user's subscriptions — these are NOT ambiguous)
 
 DATA ISOLATION RULE:
 - If the user asks about ANOTHER person's or organization's data (e.g. "show me Bob's subscriptions", "what does Alice have", "give me data for user X"), classify as "conversation". The system enforces strict per-user data isolation — users can ONLY access their own data.
@@ -63,11 +60,7 @@ Return a JSON object ONLY with no markdown:
 - For multi_query: {{"intent": "multi_query", "subqueries": ["<question 1>", "<question 2>"]}}
 """
 
-    response = client.chat.completions.create(
-        model=settings.GEMINI_MODEL,
-        messages=[{"role": "user", "content": prompt}]
-    )
-    raw = response.choices[0].message.content.strip().strip("```json").strip("```").strip()
+    raw = complete(prompt, settings.fast_models).strip("```json").strip("```").strip()
 
     try:
         result = json.loads(raw)
@@ -101,11 +94,7 @@ Be concise (1 sentence max). Do not make assumptions. Do not answer the question
 
 Your clarifying question:"""
 
-    response = client.chat.completions.create(
-        model=settings.GEMINI_MODEL,
-        messages=[{"role": "user", "content": prompt}]
-    )
-    return response.choices[0].message.content.strip()
+    return complete(prompt, settings.fast_models)
 
 
 def generate_conversational_reply(message: str, history: list = [], username: str = "") -> str:
@@ -131,11 +120,7 @@ User message: "{message}"
 
 Your response:"""
 
-    response = client.chat.completions.create(
-        model=settings.GEMINI_MODEL,
-        messages=[{"role": "user", "content": prompt}]
-    )
-    return response.choices[0].message.content.strip()
+    return complete(prompt, settings.fast_models)
 
 
 def generate_explanation(question: str, sql: str, results: list, history: list = [], username: str = "") -> str:
@@ -164,9 +149,4 @@ Number of results: {row_count}
 Sample data: {results_preview}
 
 Your summary:"""
-    response = client.chat.completions.create(
-        model=settings.GEMINI_MODEL,
-        messages=[{"role": "user", "content": prompt}],
-    )
-
-    return response.choices[0].message.content.strip()
+    return complete(prompt, settings.fast_models)

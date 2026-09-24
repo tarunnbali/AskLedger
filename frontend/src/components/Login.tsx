@@ -1,25 +1,33 @@
 "use client";
 
-import { useState, FormEvent } from "react";
+import { useState, useEffect, useRef, FormEvent } from "react";
 import { loginBackend } from "@/lib/api";
 
 interface LoginProps {
   onLoginSuccess: (token: string, username: string) => void;
+  autoLogin?: string | null;
+  onAutoLoginConsumed?: () => void;
 }
 
-export default function Login({ onLoginSuccess }: LoginProps) {
+const DEMO_ACCOUNTS = [
+  { username: "alice", tenant: "Acme Corp" },
+  { username: "bob", tenant: "Globex Inc" },
+  { username: "charlie", tenant: "Initech LLC" },
+];
+
+export default function Login({ onLoginSuccess, autoLogin, onAutoLoginConsumed }: LoginProps) {
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("password123");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const consumedRef = useRef<string | null>(null);
 
-  const handleLogin = async (e: FormEvent) => {
-    e.preventDefault();
+  const doLogin = async (u: string, p: string) => {
     setLoading(true);
     setError(null);
     try {
-      const token = await loginBackend(username, password);
-      onLoginSuccess(token, username);
+      const token = await loginBackend(u, p);
+      onLoginSuccess(token, u);
     } catch (err: any) {
       setError(err.message || "Failed to login");
     } finally {
@@ -27,9 +35,57 @@ export default function Login({ onLoginSuccess }: LoginProps) {
     }
   };
 
+  // One-click login triggered from the landing page's demo account cards
+  useEffect(() => {
+    if (autoLogin && consumedRef.current !== autoLogin) {
+      consumedRef.current = autoLogin;
+      setUsername(autoLogin);
+      doLogin(autoLogin, "password123");
+      onAutoLoginConsumed?.();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [autoLogin]);
+
+  const handleLogin = async (e: FormEvent) => {
+    e.preventDefault();
+    doLogin(username, password);
+  };
+
   return (
-    <div className="flex w-full max-w-sm flex-col items-center justify-center p-6 glass-panel rounded-2xl animate-fade-in shadow-2xl transition-all duration-300 mx-auto mt-12">
-      <h2 className="text-2xl font-bold mb-6 tracking-tight text-white/90">AskLedger Login</h2>
+    <div className="flex w-full max-w-sm flex-col items-center justify-center p-6 glass-panel rounded-2xl animate-fade-in shadow-2xl transition-all duration-300 mx-auto mt-6">
+      <h2 className="text-2xl font-bold mb-1 tracking-tight text-white/90">AskLedger Login</h2>
+      <p className="text-xs text-gray-500 mb-5 text-center">
+        This is a portfolio demo — pick a demo tenant below, or sign in manually.
+      </p>
+
+      {/* One-click demo tenants */}
+      <div className="w-full grid grid-cols-3 gap-2 mb-5">
+        {DEMO_ACCOUNTS.map((acc) => (
+          <button
+            key={acc.username}
+            type="button"
+            disabled={loading}
+            onClick={() => {
+              setUsername(acc.username);
+              doLogin(acc.username, "password123");
+            }}
+            className="flex flex-col items-center gap-1 rounded-xl border border-white/10 bg-black/30 hover:bg-blue-600/20 hover:border-blue-500/50 px-2 py-3 transition-all disabled:opacity-50 group"
+          >
+            <span className="w-8 h-8 rounded-full bg-blue-500/20 text-blue-300 flex items-center justify-center text-sm font-bold group-hover:scale-110 transition-transform">
+              {acc.username[0].toUpperCase()}
+            </span>
+            <span className="text-xs font-medium text-gray-200 capitalize">{acc.username}</span>
+            <span className="text-[9px] text-gray-500 leading-none text-center">{acc.tenant}</span>
+          </button>
+        ))}
+      </div>
+
+      <div className="w-full flex items-center gap-3 mb-5">
+        <div className="h-px flex-1 bg-white/10" />
+        <span className="text-[10px] uppercase tracking-wider text-gray-600">or sign in manually</span>
+        <div className="h-px flex-1 bg-white/10" />
+      </div>
+
       <form onSubmit={handleLogin} className="w-full flex flex-col space-y-4">
         <div>
           <label className="block text-xs uppercase tracking-wider text-gray-400 mb-1 ml-1" htmlFor="username">Username</label>
@@ -55,9 +111,9 @@ export default function Login({ onLoginSuccess }: LoginProps) {
             disabled={loading}
           />
         </div>
-        
+
         {error && <div className="text-red-400 text-sm py-1 font-medium">{error}</div>}
-        
+
         <button
           type="submit"
           className="w-full bg-blue-600 hover:bg-blue-500 text-white font-medium py-2 px-4 rounded-lg shadow-[0_0_15px_rgba(59,130,246,0.5)] transition-all hover:scale-[1.02] active:scale-[0.98] mt-2 disabled:opacity-50 flex justify-center items-center"
@@ -68,10 +124,10 @@ export default function Login({ onLoginSuccess }: LoginProps) {
           ) : "Login"}
         </button>
       </form>
-      
-      <div className="mt-6 text-xs text-gray-500 text-center">
-        <p>Demo accounts (password123):</p>
-        <p>alice, bob, charlie, admin</p>
+
+      <div className="mt-5 text-[10px] text-gray-600 text-center leading-relaxed">
+        Every demo account only sees its own tenant's data — try two different accounts
+        to see the isolation for yourself.
       </div>
     </div>
   );

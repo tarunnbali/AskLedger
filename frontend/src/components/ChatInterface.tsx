@@ -1,9 +1,17 @@
 "use client";
 
 import { useState, useRef, useEffect } from "react";
+import { Sparkles } from "lucide-react";
 import ChatMessage from "./ChatMessage";
 import ChatInput from "./ChatInput";
 import { queryBackend } from "@/lib/api";
+
+const SUGGESTIONS = [
+  "What's my total active ARR?",
+  "Show me all my cancelled subscriptions",
+  "When's my next payment due?",
+  "Show me my pending subscriptions and my next payment date",
+];
 
 type MessageRole = "user" | "assistant" | "error";
 
@@ -27,7 +35,7 @@ export default function ChatInterface({ token }: { token: string }) {
     {
       id: "welcome",
       role: "assistant",
-      text: "Hello! I am connected to the backend. How can I help you query your data today?",
+      text: "Hi! I'm AskLedger — ask me anything about your subscriptions, billing, or revenue in plain English, and I'll turn it into a secure query and answer you directly. You'll only ever see your own tenant's data.",
     },
   ]);
   const [loading, setLoading] = useState(false);
@@ -125,6 +133,28 @@ export default function ChatInterface({ token }: { token: string }) {
         {messages.map((msg) => (
           <ChatMessage key={msg.id} {...msg} />
         ))}
+
+        {/* Suggestion chips — only before the first real exchange */}
+        {messages.length === 1 && !loading && (
+          <div className="pl-4 pr-1 animate-fade-in" style={{ animationDelay: "150ms" }}>
+            <div className="flex items-center gap-1.5 text-[11px] uppercase tracking-wider text-gray-500 mb-2">
+              <Sparkles size={12} className="text-blue-400" />
+              <span>Try asking</span>
+            </div>
+            <div className="flex flex-col items-start gap-2">
+              {SUGGESTIONS.map((s) => (
+                <button
+                  key={s}
+                  onClick={() => handleSendMessage(s)}
+                  className="text-left text-xs md:text-sm px-3 py-2 rounded-xl glass border border-white/10 text-gray-300 hover:text-white hover:border-blue-500/40 hover:bg-blue-600/10 transition-all"
+                >
+                  {s}
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
+
         {loading && (
           <div className="flex justify-start animate-fade-in pl-4">
             <div className="glass px-4 py-3 rounded-2xl rounded-tl-sm text-gray-400 flex items-center space-x-2">

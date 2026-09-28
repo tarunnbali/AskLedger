@@ -210,7 +210,8 @@ def main() -> int:
     key = "sample" if args.sample else "full"
     comparable = baseline.get("model") == settings.GEMINI_SQL_MODELS
     if not comparable:
-        print(f"Note: baseline is for {baseline.get('model')}, not {settings.GEMINI_SQL_MODELS}; only --min-score applies")
+        print(f"Note: baseline is for {baseline.get('model')}, not {settings.GEMINI_SQL_MODELS}; "
+              "only --min-score applies")
     required = max(args.min_score, baseline.get(key, 0.0) - args.tolerance if comparable else 0.0)
 
     if llm_errors > MAX_LLM_ERROR_SHARE * len(results):

@@ -178,7 +178,7 @@ jobs:
           test "$(docker inspect --format '{{.Config.User}}' askledger-backend:ci)" = "10001"
           docker rm -f api
       - name: Scan for vulnerabilities (fail on fixable HIGH/CRITICAL)
-        uses: aquasecurity/trivy-action@0.28.0
+        uses: aquasecurity/trivy-action@v0.36.0
         with:
           image-ref: askledger-backend:ci
           severity: CRITICAL,HIGH

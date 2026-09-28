@@ -192,6 +192,12 @@ def main() -> int:
 
     from app.core.config import settings
     from app.prompts.registry import load_prompt
+    from app.services import llm
+
+    # The app fails fast (8s, no retries) so users aren't left waiting on a stuck
+    # model. The benchmark isn't in a hurry: wait longer and retry with backoff, so a
+    # slow Gemini moment doesn't turn into a pile of "inconclusive" timeouts.
+    llm.client = llm.client.with_options(timeout=45.0, max_retries=3)
 
     version = args.prompt_version or settings.SQL_PROMPT_VERSION
     prompt = load_prompt("sql_generation", version)

@@ -10,6 +10,10 @@ RLS) and compares the result with the gold query's result.
   python evals/run_eval.py                        # full benchmark (main)
   python evals/run_eval.py --prompt-version v2    # score a candidate prompt
 
+The eval pins ONE model (baseline.json's, unless --model says otherwise). The app
+falls back across several models, but a gate that scores whichever model happens
+to be available can't tell a worse prompt from a busy Gemini day.
+
 Exit codes: 0 pass, 1 accuracy below the gate, 2 inconclusive (too many Gemini
 failures to judge), 3 broken benchmark (a gold query failed).
 """
@@ -69,6 +73,7 @@ class PredictionCache:
 def evaluate(questions, prompt, models: str, cache: PredictionCache, delay: float) -> list[dict]:
     import openai
 
+    from app.services import llm
     from app.services.nl_to_sql_service import fix_sql, generate_sql
 
     results = []
@@ -79,9 +84,11 @@ def evaluate(questions, prompt, models: str, cache: PredictionCache, delay: floa
         try:
             if "sql" not in entry:
                 entry["sql"] = generate_sql(q["question"], [], prompt)
+                entry["model"] = llm.last_model.get()
                 time.sleep(delay)
             sql = entry["sql"]
             outcome["sql"] = sql
+            outcome["model"] = entry.get("model", "unknown")
             if sql.upper().startswith("CLARIFICATION_NEEDED:"):
                 outcome.update(status="wrong", reason="asked for clarification")
             else:
@@ -90,6 +97,7 @@ def evaluate(questions, prompt, models: str, cache: PredictionCache, delay: floa
                 except Exception as e:  # noqa: BLE001 — mirror the app: one self-correction attempt
                     if "fixed_sql" not in entry:
                         entry["fixed_sql"] = fix_sql(q["question"], sql, str(e), prompt)
+                        entry["fix_model"] = llm.last_model.get()
                         time.sleep(delay)
                     outcome["fixed_sql"] = entry["fixed_sql"]
                     pred = harness.run_as_tenant(entry["fixed_sql"])
@@ -103,8 +111,36 @@ def evaluate(questions, prompt, models: str, cache: PredictionCache, delay: floa
         cache.data[key] = entry
         results.append(outcome)
         mark = {"correct": "PASS", "wrong": "FAIL", "llm_error": "SKIP"}[outcome["status"]]
-        print(f"  {mark}  {q['id']:<24} {outcome.get('reason', '')}", flush=True)
+        print(f"  {mark}  {q['id']:<24} {outcome.get('model', ''):<24} {outcome.get('reason', '')}", flush=True)
     return results
+
+
+def per_model(results: list[dict]) -> dict:
+    """Accuracy split by the model that answered (fallback can change it run to run)."""
+    by = {}
+    for r in results:
+        if r["status"] == "llm_error":
+            continue
+        m = by.setdefault(r.get("model", "unknown"), {"correct": 0, "judged": 0})
+        m["judged"] += 1
+        m["correct"] += r["status"] == "correct"
+    return by
+
+
+def annotate(report: dict, results: list[dict]):
+    """GitHub annotations: visible on the PR and Checks page, and readable via the API."""
+    if not os.environ.get("GITHUB_ACTIONS"):
+        return
+    for r in results:
+        if r["status"] != "correct":
+            sql = " ".join((r.get("fixed_sql") or r.get("sql") or "").split())[:400]
+            print(f"::warning title=Eval {r['id']} ({r['status']})::model={r.get('model', '?')} | "
+                  f"{r.get('reason', '')} | {r['question']} | {sql}")
+    models = ", ".join(f"{m} {v['correct']}/{v['judged']}" for m, v in report["per_model"].items())
+    level = "notice" if report["verdict"] == "PASSED" else "error"
+    print(f"::{level} title=SQL accuracy {report['score']:.0%}::{report['verdict']}: {report['correct']}/"
+          f"{report['judged']} correct, required {report['required']:.0%}, prompt {report['prompt_version']}. "
+          f"By model: {models}")
 
 
 def write_summary(report: dict, results: list[dict]):
@@ -112,11 +148,15 @@ def write_summary(report: dict, results: list[dict]):
         f"### SQL accuracy: {report['score']:.0%} ({report['correct']}/{report['judged']})",
         f"Prompt `{report['prompt_version']}` · gate {report['required']:.0%} · {report['verdict']}",
         "",
-        "| Question | Result | Reason |",
-        "|---|---|---|",
+        "| Model | Correct |",
+        "|---|---|",
+        *[f"| {m} | {v['correct']}/{v['judged']} |" for m, v in report["per_model"].items()],
+        "",
+        "| Question | Result | Model | Reason |",
+        "|---|---|---|---|",
     ]
     for r in results:
-        lines.append(f"| {r['id']} | {r['status']} | {r.get('reason', '')} |")
+        lines.append(f"| {r['id']} | {r['status']} | {r.get('model', '')} | {r.get('reason', '')} |")
     text = "\n".join(lines) + "\n"
     summary = os.environ.get("GITHUB_STEP_SUMMARY")
     if summary:
@@ -127,6 +167,7 @@ def write_summary(report: dict, results: list[dict]):
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--prompt-version", help="prompt to score (default: the app's SQL_PROMPT_VERSION)")
+    ap.add_argument("--model", help="model to score, with no fallback (default: the baseline's model)")
     ap.add_argument("--sample", action="store_true", help="only the smoke questions")
     ap.add_argument("--check-gold", action="store_true", help="validate gold queries only (no Gemini)")
     ap.add_argument("--min-score", type=float, default=0.75, help="absolute floor (default 0.75)")
@@ -138,6 +179,11 @@ def main() -> int:
     args = ap.parse_args()
 
     questions = load_questions(args.sample)
+    baseline = json.loads(args.baseline.read_text()) if args.baseline.exists() else {}
+    model = args.model or baseline.get("model")
+    if model:
+        # Must be set before the app's settings are first imported (in prepare_database)
+        os.environ["GEMINI_SQL_MODELS"] = model
     print(f"Preparing benchmark database ({len(questions)} questions)...", flush=True)
     harness.prepare_database()
 
@@ -161,9 +207,12 @@ def main() -> int:
     judged = len(results) - llm_errors
     score = correct / judged if judged else 0.0
 
-    baseline = json.loads(args.baseline.read_text()) if args.baseline.exists() else {}
     key = "sample" if args.sample else "full"
-    required = max(args.min_score, baseline.get(key, 0.0) - args.tolerance)
+    comparable = baseline.get("model") == settings.GEMINI_SQL_MODELS
+    if not comparable:
+        print(f"Note: baseline is for {baseline.get('model')}, not {settings.GEMINI_SQL_MODELS}; "
+              "only --min-score applies")
+    required = max(args.min_score, baseline.get(key, 0.0) - args.tolerance if comparable else 0.0)
 
     if llm_errors > MAX_LLM_ERROR_SHARE * len(results):
         verdict, code = f"INCONCLUSIVE: {llm_errors} Gemini failures", 2
@@ -176,11 +225,14 @@ def main() -> int:
         "prompt_version": version, "prompt_sha256": prompt.sha256, "models": settings.GEMINI_SQL_MODELS,
         "mode": key, "questions": len(results), "judged": judged, "correct": correct, "llm_errors": llm_errors,
         "score": round(score, 4), "required": round(required, 4), "baseline": baseline.get(key),
-        "verdict": verdict, "results": results,
+        "verdict": verdict, "per_model": per_model(results), "results": results,
     }
     args.report.parent.mkdir(parents=True, exist_ok=True)
     args.report.write_text(json.dumps(report, indent=2))
     write_summary(report, results)
+    annotate(report, results)
+    for m, v in report["per_model"].items():
+        print(f"  {m:<26} {v['correct']}/{v['judged']}")
     print(f"\nScore {score:.1%} ({correct}/{judged}), required {required:.1%} -> {verdict}")
     return code
 

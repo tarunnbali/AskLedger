@@ -15,7 +15,7 @@ Every pull request has to pass these before it can merge.
 | Gate | What it does | Status |
 |---|---|---|
 | **Tenant isolation** | 15 tests that try to read another tenant's data: straight at the database as the app's role, and end to end through `/chat` with the LLM replaced by hostile SQL. They check that RLS is enabled *and forced* on every tenant table, that no app role can bypass it, and that tenant context never survives on a pooled connection. | [backend/tests/test_tenant_isolation.py](backend/tests/test_tenant_isolation.py) |
-| **SQL accuracy** | A 40-question benchmark with hand-written gold queries, scored by *execution accuracy*: run the model's SQL and the gold SQL as the same tenant and compare results. Fails below a floor or more than 5 points under the baseline. | Prompt v1: **95% (38/40)**. See [evals/](evals/) |
+| **SQL accuracy** | A 40-question benchmark with hand-written gold queries, scored by *execution accuracy*: run the model's SQL and the gold SQL as the same tenant and compare results. Scores one pinned model, so a busy Gemini day can't masquerade as a regression. Fails below a floor or more than 5 points under the baseline. | Prompt v1 on the pinned model: **90% (36/40)**. See [evals/](evals/) |
 | **Prompt review** | Prompts are versioned YAML files ([backend/prompts/](backend/prompts/)). A change is a new version, reviewed like code and scored by the accuracy gate. | `SQL_PROMPT_VERSION=v1` |
 | **Unit tests + lint** | SQL validator, probes, metrics, prompt rendering, intent parsing. Ruff, ESLint, TypeScript. | 29 tests |
 | **Image** | Multi-stage, non-root image. Trivy fails the build on fixable HIGH/CRITICAL vulnerabilities; published to GHCR from `main`. | [backend/Dockerfile](backend/Dockerfile) |

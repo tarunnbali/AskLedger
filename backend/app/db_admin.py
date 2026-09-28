@@ -51,7 +51,11 @@ def _ensure_role(conn, name: str, login: bool, password: str | None) -> None:
     exists = conn.execute(text("SELECT 1 FROM pg_roles WHERE rolname = :r"), {"r": name}).scalar()
     # NOINHERIT on the login role: membership in askledger_query must not grant
     # its table access implicitly, only through an explicit SET ROLE.
-    attrs = f"{'LOGIN NOINHERIT' if login else 'NOLOGIN'} NOSUPERUSER NOBYPASSRLS NOCREATEDB NOCREATEROLE"
+    attrs = f"{'LOGIN NOINHERIT' if login else 'NOLOGIN'} NOBYPASSRLS"
+    if not exists:
+        # Only on CREATE: managed Postgres owners (e.g. Neon) aren't superusers
+        # and may not name SUPERUSER/CREATEDB/CREATEROLE in ALTER ROLE at all.
+        attrs += " NOSUPERUSER NOCREATEDB NOCREATEROLE"
     if password is not None:
         if not _SAFE_PASSWORD.match(password):
             raise ValueError("password must be 16-128 characters of [A-Za-z0-9_-]")
@@ -88,7 +92,23 @@ def apply_roles(engine: Engine, app_password: str | None = None, revoke_legacy_g
             conn.execute(text(f"ALTER DEFAULT PRIVILEGES IN SCHEMA public REVOKE SELECT ON TABLES FROM {APP_ROLE}"))
 
 
+def verify_roles(engine: Engine) -> None:
+    """Fail loudly if either role could bypass Row-Level Security."""
+    with engine.connect() as conn:
+        rows = conn.execute(
+            text("SELECT rolname, rolsuper, rolbypassrls FROM pg_roles WHERE rolname IN (:a, :q)"),
+            {"a": APP_ROLE, "q": QUERY_ROLE},
+        ).all()
+    found = {r.rolname for r in rows}
+    if found != {APP_ROLE, QUERY_ROLE}:
+        raise RuntimeError(f"missing roles: {sorted({APP_ROLE, QUERY_ROLE} - found)}")
+    unsafe = [r.rolname for r in rows if r.rolsuper or r.rolbypassrls]
+    if unsafe:
+        raise RuntimeError(f"roles can bypass RLS: {unsafe}")
+
+
 def setup_database(engine: Engine, app_password: str | None = None, revoke_legacy_grants: bool = True) -> None:
     create_schema(engine)
     apply_rls(engine)
     apply_roles(engine, app_password=app_password, revoke_legacy_grants=revoke_legacy_grants)
+    verify_roles(engine)

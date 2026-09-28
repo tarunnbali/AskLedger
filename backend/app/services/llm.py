@@ -6,6 +6,7 @@ overloaded, so each call walks an ordered list of models and moves on to
 the next one when a call is rate-limited or fails.
 """
 import logging
+from contextvars import ContextVar
 
 import openai
 from openai import OpenAI
@@ -14,6 +15,10 @@ from app.core.config import settings
 from app.core.metrics import LLM_CALLS, LLM_TOKENS
 
 logger = logging.getLogger(__name__)
+
+# Which model produced the most recent successful answer in this context
+# (after fallback). Used by the evals to report accuracy per model.
+last_model: ContextVar[str | None] = ContextVar("last_model", default=None)
 
 # No SDK retries: on a 429 the SDK would sleep for Google's suggested retry
 # delay (~40s) before retrying, which stalls the chat. Falling through to the
@@ -56,6 +61,7 @@ def complete(prompt: str, models: list[str], temperature: float | None = None) -
             last_error = e
             continue
         LLM_CALLS.labels(model, "ok").inc()
+        last_model.set(model)
         if response.usage:
             LLM_TOKENS.labels(model, "prompt").inc(response.usage.prompt_tokens or 0)
             LLM_TOKENS.labels(model, "completion").inc(response.usage.completion_tokens or 0)

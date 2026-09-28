@@ -14,4 +14,4 @@ Prompts live here as versioned YAML files: `<name>/<version>.yaml`.
 
 | Prompt | Versions | Notes |
 |---|---|---|
-| `sql_generation` | v1 | Baseline. 95% on the benchmark; misses revenue questions about cancelled subscriptions (rule 7 forces `is_active = TRUE`). |
+| `sql_generation` | v1 | Baseline: 90% on the pinned model (95% on gemini-3.6-flash). Misses revenue questions about cancelled subscriptions (rule 7 forces `is_active = TRUE`). |

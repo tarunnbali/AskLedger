@@ -1,6 +1,7 @@
 {
+  "model": "gemini-3.5-flash-lite",
   "prompt_version": "v1",
-  "full": 0.95,
+  "full": 0.9,
   "sample": 1.0,
-  "note": "Measured 2026-09-25 with gemini-3.6-flash first in the fallback list. The two v1 misses (arr-vs-mrr-count, cancelled-revenue) come from prompt rule 7 forcing sc.is_active = TRUE even for cancelled subscriptions. Update this file when a better prompt merges."
+  "note": "Measured 2026-09-28 with the eval pinned to gemini-3.5-flash-lite (no fallback). Misses: arr-vs-mrr-count and cancelled-revenue (prompt rule 7 forces sc.is_active = TRUE even for cancelled subscriptions), avg-annual-price and mrr-active-revenue (asks for clarification). For reference, gemini-3.6-flash scored 0.95 on 2026-09-25. Update when a better prompt or a model change merges."
 }

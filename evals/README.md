@@ -18,8 +18,15 @@ Needs `GEMINI_API_KEY` unless every prediction is already cached.
 
 ## The gate
 
+The eval scores **one pinned model** (`baseline.json`'s, currently
+`gemini-3.5-flash-lite`) with no fallback. The app falls back across models, but a
+gate that scores whichever model is available that day can't tell a worse prompt
+from a busy Gemini: the first run on `main` failed for exactly that reason, when
+39 of 40 questions fell through to a smaller model.
+
 The run fails if the score is below `max(--min-score, baseline - --tolerance)`,
-with the baseline in [`baseline.json`](baseline.json). Gemini outages don't count as
+with the baseline in [`baseline.json`](baseline.json). Reports break accuracy down
+by the model that answered, and failures are posted as GitHub annotations. Gemini outages don't count as
 wrong answers; if more than 20% of calls fail, the run is *inconclusive* (exit 2)
 rather than pass or fail on noise.
 
@@ -29,6 +36,12 @@ without spending Gemini quota.
 
 ## Baseline: prompt v1
 
-**95% (38/40).** Both misses come from the same prompt rule: v1 tells the model
-to always filter `sc.is_active = TRUE` on revenue questions, which is wrong for
-questions about cancelled subscriptions. A good target for prompt v2.
+| Model | Score |
+|---|---|
+| `gemini-3.5-flash-lite` (pinned for the gate) | **90% (36/40)**, sample 10/10 |
+| `gemini-3.6-flash` | 95% (38/40) |
+
+Two misses come from one prompt rule: v1 tells the model to always filter
+`sc.is_active = TRUE` on revenue questions, which is wrong for questions about
+cancelled subscriptions. The lite model also asks for clarification on two
+questions it should answer. Both are targets for prompt v2.

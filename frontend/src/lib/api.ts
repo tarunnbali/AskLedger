@@ -11,11 +11,28 @@ export interface HistoryMessage {
   content: string;
 }
 
+/** One row of a query result: column name -> value. */
+export type ResultRow = Record<string, unknown>;
+
+/** One answered part of a multi-part question. */
+export interface SubResult {
+  question: string;
+  sql_query: string | null;
+  results: ResultRow[] | null;
+  explanation: string;
+}
+
 export interface ChatResponse {
   type?: "conversation" | "data_query" | "clarification" | "multi_query";
   sql_query?: string | null;
-  results?: any[] | null;
+  // Rows for a data query; answered parts for a multi-part question
+  results?: ResultRow[] | SubResult[] | null;
   explanation?: string;
+  prompt_version?: string;
+}
+
+export function errorMessage(err: unknown, fallback: string): string {
+  return err instanceof Error && err.message ? err.message : fallback;
 }
 
 /** Fire-and-forget ping so a sleeping backend starts waking before the user clicks. */
@@ -29,7 +46,7 @@ async function fetchWithWakeRetry(url: string, init: RequestInit, onWaking?: () 
   for (;;) {
     try {
       return await fetch(url, init);
-    } catch (error) {
+    } catch {
       // HTTP error responses resolve normally; only network failures land here.
       // If the backend is already awake, this wasn't a cold start, so don't
       // keep retrying (a retried chat request would spend LLM quota).
@@ -74,9 +91,9 @@ export async function loginBackend(
     }
     const data = await response.json();
     return data.access_token;
-  } catch (error: any) {
+  } catch (error) {
     console.error("Login call failed:", error);
-    throw new Error(error.message || "An unexpected error occurred during login.");
+    throw new Error(errorMessage(error, "An unexpected error occurred during login."));
   }
 }
 
@@ -112,8 +129,8 @@ export async function queryBackend(
 
     const data: ChatResponse = await response.json();
     return data;
-  } catch (error: any) {
+  } catch (error) {
     console.error("API call failed:", error);
-    throw new Error(error.message || "An unexpected error occurred while contacting the server.");
+    throw new Error(errorMessage(error, "An unexpected error occurred while contacting the server."));
   }
 }

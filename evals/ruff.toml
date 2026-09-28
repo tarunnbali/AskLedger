@@ -1,0 +1,3 @@
+# Same rules as the backend; `app` and `scripts` are first-party imports here too
+extend = "../backend/pyproject.toml"
+src = [".", "../backend"]

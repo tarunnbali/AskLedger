@@ -1,7 +1,7 @@
 from datetime import datetime, timedelta, timezone
 
 import bcrypt
-from jose import JWTError, jwt
+import jwt
 
 from app.core.config import settings
 
@@ -21,8 +21,8 @@ def create_access_token(data: dict) -> str:
     return jwt.encode(payload, settings.JWT_SECRET, algorithm="HS256")
 
 
-def decode_access_token(token: str) -> dict:
+def decode_access_token(token: str) -> dict | None:
     try:
         return jwt.decode(token, settings.JWT_SECRET, algorithms=["HS256"])
-    except JWTError:
+    except jwt.PyJWTError:
         return None

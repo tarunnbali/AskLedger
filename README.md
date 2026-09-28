@@ -1,83 +1,86 @@
 # AskLedger
 
-Ask your subscription billing data questions in plain English — no SQL required.
+[![CI](https://github.com/tarunnbali/AskLedger/actions/workflows/ci.yml/badge.svg)](https://github.com/tarunnbali/AskLedger/actions/workflows/ci.yml)
 
-AskLedger is a natural-language analytics assistant for multi-tenant subscription billing platforms. Type a question like *"What's my MRR this quarter?"* or *"When's my next payment due?"* and get a conversational answer, backed by an LLM that translates the question into validated, read-only SQL and executes it against PostgreSQL with strict Row-Level Security enforcing per-tenant data isolation.
+**A multi-tenant text-to-SQL assistant: ask billing questions in plain English, get answers from your own data only, with CI gates that block tenant-data leaks and SQL-accuracy regressions.**
 
-**[Live demo →](#)** *(link goes here once deployed)*
+**[Live demo →](https://ask-ledger.vercel.app)** · demo logins `alice` / `bob` / `charlie`, password `password123`
 
 ---
 
-## How it works
+## Quality gates
 
-1. You log in as one of the demo tenants (see below).
-2. You ask a question in the chat widget.
-3. The backend classifies the intent (small talk vs. a real data question vs. an ambiguous one vs. multiple questions at once), turns data questions into SQL via an LLM, validates the SQL is read-only, and runs it — with PostgreSQL Row-Level Security silently restricting results to your tenant's data only, no matter what the AI-generated query looks like.
-4. The results come back as a natural-language answer, not raw rows.
+Every pull request has to pass these before it can merge.
 
-See [walkthrough.md](walkthrough.md) for a detailed step-by-step trace of a request through the whole system.
+| Gate | What it does | Status |
+|---|---|---|
+| **Tenant isolation** | 15 tests that try to read another tenant's data: straight at the database as the app's role, and end to end through `/chat` with the LLM replaced by hostile SQL. They check that RLS is enabled *and forced* on every tenant table, that no app role can bypass it, and that tenant context never survives on a pooled connection. | [backend/tests/test_tenant_isolation.py](backend/tests/test_tenant_isolation.py) |
+| **SQL accuracy** | A 40-question benchmark with hand-written gold queries, scored by *execution accuracy*: run the model's SQL and the gold SQL as the same tenant and compare results. Fails below a floor or more than 5 points under the baseline. | Prompt v1: **95% (38/40)**. See [evals/](evals/) |
+| **Prompt review** | Prompts are versioned YAML files ([backend/prompts/](backend/prompts/)). A change is a new version, reviewed like code and scored by the accuracy gate. | `SQL_PROMPT_VERSION=v1` |
+| **Unit tests + lint** | SQL validator, probes, metrics, prompt rendering, intent parsing. Ruff, ESLint, TypeScript. | 29 tests |
+| **Image** | Multi-stage, non-root image. Trivy fails the build on fixable HIGH/CRITICAL vulnerabilities; published to GHCR from `main`. | [backend/Dockerfile](backend/Dockerfile) |
 
-## Tech stack
+### What the gates caught while being built
 
-| Layer | Tech |
-|---|---|
-| Frontend | Next.js, React, Tailwind |
-| Backend | FastAPI, SQLAlchemy |
-| Database | PostgreSQL with Row-Level Security |
-| LLM | Google Gemini (free tier) via its OpenAI-compatible endpoint |
-| Auth | JWT |
+Writing the isolation tests first, against the existing code, surfaced two real leaks:
 
-## Try it yourself (demo accounts)
+1. **The chat could return every tenant's password hashes.** The app's database role could read `users` (it needs it for login), and nothing stopped generated SQL from querying it. The test made `/chat` run `SELECT username, password_hash FROM users` and got alice's *and* bob's bcrypt hashes back. Fixed by running chat queries as a separate `askledger_query` role that can only read the four tenant tables.
+2. **The tenant ID outlived the request.** `SET app.current_tenant` inside a committed transaction stays on the pooled connection, so any code path that forgot to set it would run as the previous request's tenant. Fixed with transaction-local `set_config(…, true)`, bound as a parameter.
 
-Password for all demo accounts: `password123`
+Earlier in the project, the same class of bug showed up in production: Neon's default owner role has `BYPASSRLS`, which silently disabled every policy. The gate now checks role attributes explicitly.
 
-| Username | Tenant |
-|---|---|
-| `alice` | Acme Corp |
-| `bob` | Globex Inc |
-| `charlie` | Initech LLC |
+## How a question is answered
 
-Try asking things like:
-- "What's my total active ARR?"
-- "Show me all my cancelled subscriptions"
-- "When's my next payment?"
-- "What subscriptions do I have and what do they cost?"
-
-## Running locally
-
-```bash
-git clone <your-repo-url>
-cd askledger
+```mermaid
+flowchart LR
+    U[User question] --> I[Intent<br/>classifier]
+    I -->|data question| P[Versioned prompt<br/>prompts/sql_generation/v1.yaml]
+    P --> G[Gemini<br/>model fallback]
+    G --> V[Validator<br/>single read-only SELECT]
+    V --> Q["Postgres as askledger_query<br/>RLS: this tenant only"]
+    Q -->|error| F[One self-correction] --> V
+    Q --> E[Plain-English answer<br/>+ SQL + result table]
 ```
 
-**Backend**
+## Run it locally
+
+```bash
+pip install -r backend/requirements-dev.txt pgserver   # pgserver = embedded Postgres for tests
+(cd backend && pytest)                                 # 44 tests, including the isolation gate
+python evals/run_eval.py --check-gold                  # validate the benchmark; add GEMINI_API_KEY to score it
+```
+
+To run the whole app against a real database:
+
 ```bash
 cd backend
-cp .env.example .env   # fill in DATABASE_URL, ADMIN_DATABASE_URL, GEMINI_API_KEY, JWT_SECRET
-pip install -r requirements.txt
-python create_tables.py
-psql "$ADMIN_DATABASE_URL" -f rls_setup.sql
-# If your provider's owner role has BYPASSRLS (e.g. Neon), also run:
-#   python setup_db_role.py
-# and use the DATABASE_URL it prints instead of the owner connection string.
-python seed_data.py
-uvicorn app.main:app --reload
+cp .env.example .env                    # ADMIN_DATABASE_URL, GEMINI_API_KEY, JWT_SECRET
+python -m scripts.setup_database --rotate-password   # schema, RLS, roles; prints the app's DATABASE_URL
+python -m scripts.seed_data             # demo tenants
+uvicorn app.main:app --reload           # then: cd ../frontend && npm install && npm run dev
 ```
 
-**Frontend**
-```bash
-cd frontend
-cp .env.example .env.local
-npm install
-npm run dev
+## Design decisions and trade-offs
+
+- **Isolation lives in the database, not the prompt.** The LLM is told not to filter by tenant; Row-Level Security does it, so a wrong or hostile query still can't cross tenants. The tests attack the database directly for that reason.
+- **Two roles, not one.** Login needs `users`; generated SQL must never see it. A `NOINHERIT` login role that switches to a narrow query role per transaction gives each path only what it needs.
+- **Execution accuracy, not string matching.** Two different SQL queries can both be right. Comparing results (ignoring row order and extra columns) scores answers the way a user would.
+- **Evals are cached by prompt + model + question.** Pull requests that don't change the prompt re-check answers against a fresh database without spending Gemini quota; Gemini outages make a run *inconclusive* rather than failing it.
+- **Free-tier hosting.** Vercel (frontend), Render (API) and Neon (Postgres) cost nothing. The trade-offs are cold starts and small AI quotas, handled with a keep-warm job, model fallback and fail-fast timeouts.
+
+## Observability
+
+`/health` (liveness), `/ready` (database + prompt), and `/metrics` (Prometheus): request rate and latency, LLM calls by model and outcome, tokens, SQL validation rejections, execution errors and empty results by prompt version.
+
+## Repository layout
+
+```
+backend/    FastAPI app, versioned prompts, database setup, tests
+frontend/   Next.js site and chat widget
+evals/      SQL accuracy benchmark and gate
+infra/      Terraform (phase 2)
+deploy/     Helm chart and Argo CD config (phase 2)
+docs/       Design notes and postmortems
 ```
 
-Open http://localhost:3000.
-
-## Security notes
-
-- Tenant isolation is enforced at the **database layer** via PostgreSQL RLS (`rls_setup.sql`), not just in application code — even a malformed AI-generated query can't leak another tenant's rows.
-- Generated SQL is restricted to read-only `SELECT` statements (blocklist of DML/DDL keywords + single-statement enforcement) and wrapped in a row-limited subquery before execution.
-- The `/chat` endpoint is rate-limited per IP to protect against runaway LLM API costs on a public demo.
-
-More detail in [backend/README.md](backend/README.md) and [backend/SCHEMA.md](backend/SCHEMA.md).
+More detail: [backend/README.md](backend/README.md), [backend/SCHEMA.md](backend/SCHEMA.md), [evals/README.md](evals/README.md).

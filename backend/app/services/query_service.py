@@ -1,29 +1,23 @@
 from sqlalchemy import text
 
 from app.core.database import engine
+from app.db_admin import QUERY_ROLE
 
 
 def run_query(sql: str, entity_id: str):
     """
-    Execute a validated SQL query.
-    Sets the PostgreSQL session variable `app.current_tenant` before execution
-    so that Row-Level Security (RLS) policies can enforce tenant isolation at
-    the database level as a safety net.
+    Execute a validated, LLM-generated SQL query for one tenant.
+
+    Everything happens inside a single transaction, and both settings are
+    transaction-local, so nothing survives on the pooled connection afterwards:
+      - SET LOCAL ROLE switches to askledger_query, which can read only the
+        tenant tables (not `users` with its password hashes).
+      - set_config(..., true) scopes app.current_tenant to this transaction;
+        Row-Level Security filters every row by it.
     """
-    # We create a raw core connection instead of an ORM session to ensure 
-    # we have absolute control over the transaction isolation.
     with engine.connect() as conn:
         with conn.begin():
-            # 1. Set the RLS variable for this specific connection ONLY
-            conn.execute(text(f"SET app.current_tenant = '{entity_id}'"))
-            
-            # 2. Execute the user's validated query
+            conn.execute(text(f"SET LOCAL ROLE {QUERY_ROLE}"))
+            conn.execute(text("SELECT set_config('app.current_tenant', :tenant, true)"), {"tenant": entity_id})
             result = conn.execute(text(sql))
-            
-            # 3. SQLAlchemy 2.0+ requires row._mapping to convert to dict reliably
-            rows = [dict(row._mapping) for row in result]
-            
-            # 4. As soon as the 'with' block exits, SQLAlchemy automatically rolls
-            # back or clears the transaction state, blowing away the SET variable
-            # before the connection is ever returned to the pool.
-            return rows
+            return [dict(row._mapping) for row in result]

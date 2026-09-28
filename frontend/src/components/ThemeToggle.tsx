@@ -1,19 +1,25 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useSyncExternalStore } from "react";
 import { Moon, Sun } from "lucide-react";
 
 type Theme = "light" | "dark";
 
+// The theme lives on <html data-theme>, set before paint by the inline script in
+// layout.tsx. Subscribe to that attribute instead of mirroring it in React state.
+function subscribe(onChange: () => void) {
+  const observer = new MutationObserver(onChange);
+  observer.observe(document.documentElement, { attributes: true, attributeFilter: ["data-theme"] });
+  return () => observer.disconnect();
+}
+
+const getTheme = (): Theme => (document.documentElement.dataset.theme === "dark" ? "dark" : "light");
+// Unknown on the server; the button renders its icon once hydrated
+const getServerTheme = (): Theme | null => null;
+
 /** Switches data-theme on <html> and remembers the choice for this browser. */
 export default function ThemeToggle() {
-  // The initial theme is set by the inline script in layout.tsx before paint;
-  // read it after mount so server and client render the same markup.
-  const [theme, setTheme] = useState<Theme | null>(null);
-
-  useEffect(() => {
-    setTheme(document.documentElement.dataset.theme === "dark" ? "dark" : "light");
-  }, []);
+  const theme = useSyncExternalStore(subscribe, getTheme, getServerTheme);
 
   const toggle = () => {
     const next: Theme = theme === "dark" ? "light" : "dark";
@@ -23,7 +29,6 @@ export default function ThemeToggle() {
     } catch {
       // Storage can be unavailable (private mode); the toggle still works for this visit
     }
-    setTheme(next);
   };
 
   const label = theme === "dark" ? "Switch to light mode" : "Switch to dark mode";

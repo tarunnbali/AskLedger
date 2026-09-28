@@ -1,5 +1,9 @@
 import re
 
+
+class UnsafeSQLError(ValueError):
+    """Generated SQL failed the read-only safety checks."""
+
 FORBIDDEN = [
     "INSERT", "UPDATE", "DELETE", "DROP", "ALTER", "TRUNCATE",
     "GRANT", "REVOKE", "COPY", "REPLACE", "EXECUTE", "CALL",
@@ -12,15 +16,15 @@ def validate_sql(sql: str):
 
     # Reject complex multi-statements usually separated by semicolons
     if ";" in sql.strip().rstrip(";"):
-         raise Exception("Multiple statements detected. Only secure, single SELECT queries allowed.")
+         raise UnsafeSQLError("Multiple statements detected. Only secure, single SELECT queries allowed.")
 
     for keyword in FORBIDDEN:
         # Check for bounded whole words, e.g. stopping "UPDATE" but allowing "UPDATED_AT"
         if re.search(rf"\b{keyword}\b", upper):
-            raise Exception(f"Unsafe SQL keyword detected.")
+            raise UnsafeSQLError("Unsafe SQL keyword detected.")
 
     if not upper.strip().startswith("SELECT"):
-        raise Exception("Only SELECT queries allowed")
+        raise UnsafeSQLError("Only SELECT queries allowed")
 
     return True
 

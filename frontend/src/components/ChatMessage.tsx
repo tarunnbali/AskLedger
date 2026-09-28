@@ -1,21 +1,15 @@
 import { Bot, User, AlertCircle, Database, HelpCircle } from "lucide-react";
-
-interface MultiResult {
-  question: string;
-  sql_query: string | null;
-  results: any[] | null;
-  explanation: string;
-}
+import type { ResultRow, SubResult } from "@/lib/api";
 
 interface ChatMessageProps {
   role: "user" | "assistant" | "error";
   text: string;
   sql?: string | null;
-  results?: any[] | null;
-  multiResults?: MultiResult[] | null;
+  results?: ResultRow[] | null;
+  multiResults?: SubResult[] | null;
 }
 
-function ResultTable({ results }: { results: any[] }) {
+function ResultTable({ results }: { results: ResultRow[] }) {
   if (!results || results.length === 0) return null;
   return (
     <div className="overflow-hidden rounded-lg border border-rule bg-surface">
@@ -33,9 +27,9 @@ function ResultTable({ results }: { results: any[] }) {
           <tbody>
             {results.map((row, rowIndex) => (
               <tr key={rowIndex} className="border-b border-rule transition-colors last:border-0 hover:bg-paper">
-                {Object.values(row).map((val: any, colIndex) => (
+                {Object.values(row).map((val, colIndex) => (
                   <td key={colIndex} className="px-4 py-2.5 whitespace-nowrap">
-                    {val !== null ? String(val) : <span className="italic text-graphite">null</span>}
+                    {val !== null && val !== undefined ? String(val) : <span className="italic text-graphite">null</span>}
                   </td>
                 ))}
               </tr>

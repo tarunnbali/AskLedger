@@ -1,9 +1,10 @@
 """
 Intent classification and conversational response service.
-Uses Gemini to classify user messages into 4 categories, generate clarifying 
+Uses Gemini to classify user messages into 4 categories, generate clarifying
 questions for ambiguous inputs, handle conversational replies, and explain results.
 """
 import json
+import re
 
 from app.core.config import settings
 from app.services.llm import complete
@@ -19,7 +20,7 @@ def _format_history(history: list) -> str:
     return "\n".join(lines) + "\n\n"
 
 
-def classify_intent(message: str, history: list = []) -> dict:
+def classify_intent(message: str, history: list | None = None) -> dict:
     """
     Classify the user message into one of 4 intents.
     Returns { "intent": "...", "subqueries": [...] }
@@ -60,7 +61,7 @@ Return a JSON object ONLY with no markdown:
 - For multi_query: {{"intent": "multi_query", "subqueries": ["<question 1>", "<question 2>"]}}
 """
 
-    raw = complete(prompt, settings.fast_models).strip("```json").strip("```").strip()
+    raw = re.sub(r"^```(?:json)?\s*|\s*```$", "", complete(prompt, settings.fast_models).strip())
 
     try:
         result = json.loads(raw)
@@ -78,7 +79,7 @@ Return a JSON object ONLY with no markdown:
         return {"intent": "data_query", "subqueries": []}
 
 
-def generate_clarifying_question(message: str, history: list = []) -> str:
+def generate_clarifying_question(message: str, history: list | None = None) -> str:
     """
     Generate a targeted clarifying question when the user's intent is ambiguous.
     """
@@ -97,7 +98,7 @@ Your clarifying question:"""
     return complete(prompt, settings.fast_models)
 
 
-def generate_conversational_reply(message: str, history: list = [], username: str = "") -> str:
+def generate_conversational_reply(message: str, history: list | None = None, username: str = "") -> str:
     """
     Generate a friendly, conversational response for non-data messages.
     """
@@ -123,7 +124,7 @@ Your response:"""
     return complete(prompt, settings.fast_models)
 
 
-def generate_explanation(question: str, sql: str, results: list, history: list = [], username: str = "") -> str:
+def generate_explanation(question: str, sql: str, results: list, history: list | None = None, username: str = "") -> str:
     """
     Generate a natural language explanation of the query results.
     """

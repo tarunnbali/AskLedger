@@ -1,0 +1,6 @@
+{
+  "prompt_version": "v1",
+  "full": 0.95,
+  "sample": 1.0,
+  "note": "Measured 2026-09-25 with gemini-3.6-flash first in the fallback list. The two v1 misses (arr-vs-mrr-count, cancelled-revenue) come from prompt rule 7 forcing sc.is_active = TRUE even for cancelled subscriptions. Update this file when a better prompt merges."
+}

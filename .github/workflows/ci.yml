@@ -184,6 +184,15 @@ jobs:
           severity: CRITICAL,HIGH
           ignore-unfixed: true
           exit-code: "1"
+          format: table
+          output: trivy-report.txt
+      - name: Show scan results
+        if: always()
+        run: |
+          if [ -f trivy-report.txt ]; then
+            cat trivy-report.txt
+            { echo "### Trivy (fixable HIGH/CRITICAL)"; echo '```'; cat trivy-report.txt; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
+          fi
       - name: Publish to GHCR (main only)
         if: github.event_name == 'push' && github.ref == 'refs/heads/main'
         run: |

@@ -29,6 +29,11 @@ RUN groupadd --system --gid 10001 app \
 
 COPY --from=builder /install /usr/local
 
+# pip, setuptools and wheel are only needed to install packages, which happened
+# in the build stage. Removing them shrinks the attack surface and drops the
+# known CVEs the base image's copies carry.
+RUN python -m pip uninstall -y pip setuptools wheel
+
 WORKDIR /app
 # Runtime code only: no tests, scripts or local .env
 COPY --chown=app:app app ./app
